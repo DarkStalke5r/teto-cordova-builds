@@ -1,7 +1,7 @@
 {
-  "name": "com-example-desktop3948",
-  "displayName": "micro Desktop",
-  "version": "1.4.1",
+  "name": "com-example-micro-display",
+  "displayName": "micro Display",
+  "version": "Version:",
   "description": "Cordova app built by System_Teto",
   "main": "index.js",
   "scripts": {
