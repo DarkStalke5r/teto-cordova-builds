@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -22,21 +22,51 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK cmdline-tools
+        run: |
+          set -e
+          ANDROID_HOME="$HOME/android-sdk"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdtools.zip
+          rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+          unzip -q /tmp/cmdtools.zip -d "$ANDROID_HOME/cmdline-tools"
+          # архив кладёт папку cmdline-tools → переименовываем в latest
+          if [ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ]; then
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+
+      - name: Accept licenses & install packages
+        run: |
+          set -e
+          yes | sdkmanager --licenses >/tmp/sdk-licenses.txt || true
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager --list_installed | head -40
 
       - name: Install Cordova
         run: npm install -g cordova@12
 
       - name: Add platform & build
         run: |
-          cordova platform add android@13 --nofetch || true
+          set -e
+          cordova platform remove android || true
+          cordova platform add android@13
           cordova prepare android
           cordova build android --debug -- --gradleArg=-Dorg.gradle.jvmargs=-Xmx2g
 
       - name: Locate APK
         id: apk
         run: |
+          set -e
           APK=$(find platforms/android -name "*.apk" | head -n1)
+          if [ -z "$APK" ]; then
+            echo "APK not found"
+            find platforms -type f -name "*.apk" || true
+            exit 1
+          fi
           echo "path=$APK" >> $GITHUB_OUTPUT
           ls -lh "$APK"
 
