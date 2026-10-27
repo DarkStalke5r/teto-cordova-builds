@@ -1,0 +1,21 @@
+{
+  "name": "com-example-desktop3948",
+  "displayName": "micro Desktop",
+  "version": "1.4.1",
+  "description": "Cordova app built by System_Teto",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"no test\""
+  },
+  "keywords": [
+    "ecosystem:cordova"
+  ],
+  "author": "System_Teto",
+  "license": "Apache-2.0",
+  "cordova": {
+    "platforms": [
+      "android"
+    ],
+    "plugins": {}
+  }
+}
