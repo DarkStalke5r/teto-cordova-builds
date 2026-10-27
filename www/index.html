@@ -1,0 +1,3542 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Virtual Desktop — файловая система, терминал и логи" />
+  <title>Virtual Desktop</title>
+  <!-- App icons / favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Crect x='12' y='18' width='76' height='52' rx='8' fill='%231e293b' stroke='%233b82f6' stroke-width='3'/%3E%3Ccircle cx='28' cy='32' r='4' fill='%23ef4444'/%3E%3Ccircle cx='42' cy='32' r='4' fill='%23eab308'/%3E%3Ccircle cx='56' cy='32' r='4' fill='%2322c55e'/%3E%3Crect x='22' y='44' width='40' height='4' rx='2' fill='%2394a3b8'/%3E%3Crect x='22' y='54' width='28' height='4' rx='2' fill='%2364748b'/%3E%3Crect x='30' y='78' width='40' height='8' rx='3' fill='%23334155'/%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Crect x='12' y='18' width='76' height='52' rx='8' fill='%231e293b' stroke='%233b82f6' stroke-width='3'/%3E%3Ccircle cx='28' cy='32' r='4' fill='%23ef4444'/%3E%3Ccircle cx='42' cy='32' r='4' fill='%23eab308'/%3E%3Ccircle cx='56' cy='32' r='4' fill='%2322c55e'/%3E%3Crect x='22' y='44' width='40' height='4' rx='2' fill='%2394a3b8'/%3E%3Crect x='22' y='54' width='28' height='4' rx='2' fill='%2364748b'/%3E%3Crect x='30' y='78' width='40' height='8' rx='3' fill='%23334155'/%3E%3C/svg%3E" />
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Virtual%20Desktop%22%2C%22short_name%22%3A%22VDesktop%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f172a%22%2C%22theme_color%22%3A%22%230f172a%22%7D" />
+  <style>
+    :root {
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --bg-window: #1e293b;
+      --bg-title: #0f172a;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warning: #eab308;
+      --term-bg: #0b1220;
+      --term-fg: #e2e8f0;
+      --term-green: #4ade80;
+      --term-red: #f87171;
+      --term-yellow: #facc15;
+      --term-cyan: #22d3ee;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --taskbar-h: 64px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0f172a;
+      color: var(--text);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    /* ===== DESKTOP ===== */
+    #desktop {
+      position: relative;
+      width: 100%;
+      height: calc(100dvh - var(--taskbar-h) - var(--safe-bottom));
+      padding-top: var(--safe-top);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .desktop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+      gap: 8px;
+      padding: 16px 12px 24px;
+      justify-items: center;
+    }
+
+    .desktop-icon {
+      width: 76px;
+      text-align: center;
+      padding: 8px 4px 6px;
+      border-radius: 16px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .desktop-icon:active {
+      background: rgba(255, 255, 255, 0.12);
+      transform: scale(0.94);
+    }
+
+    .desktop-icon .icon-wrap {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 6px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      line-height: 1;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .desktop-icon .icon-wrap.app-img {
+      background: transparent;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    }
+    .desktop-icon .icon-wrap.app-img .app-icon-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+    }
+    .desktop-icon .icon-wrap.folder      { background: linear-gradient(145deg, #64748b, #334155); }
+    .desktop-icon .icon-wrap.file        { background: linear-gradient(145deg, #475569, #1e293b); }
+    .desktop-icon .icon-wrap.image       { background: linear-gradient(145deg, #ec4899, #be185d); padding: 0; overflow: hidden; }
+    .desktop-icon .icon-wrap.text        { background: linear-gradient(145deg, #6366f1, #4338ca); }
+
+    .desktop-icon .icon {
+      font-size: 28px;
+      line-height: 1;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    }
+
+    .desktop-icon .name {
+      font-size: 11px;
+      word-break: break-word;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+      line-height: 1.25;
+      max-height: 2.5em;
+      overflow: hidden;
+      color: #f1f5f9;
+    }
+
+    /* ===== TASKBAR ===== */
+    #taskbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: calc(var(--taskbar-h) + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      background: rgba(15, 23, 42, 0.96);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 9999;
+    }
+
+    .taskbar-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 6px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      min-width: 54px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .taskbar-btn .tb-icon-wrap {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .taskbar-btn .tb-icon-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 8px;
+    }
+
+    .taskbar-btn:active,
+    .taskbar-btn.active {
+      color: #e2e8f0;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .taskbar-btn.active .tb-icon-wrap {
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+    }
+
+    /* ===== WINDOWS ===== */
+    .window {
+      position: fixed;
+      background: #2d323c;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 100;
+      border: 1px solid #1a1d24;
+      border-radius: 10px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      min-width: 280px;
+      min-height: 200px;
+    }
+
+    .window.maximized {
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: calc(100dvh - var(--taskbar-h) - var(--safe-bottom)) !important;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-top: none;
+    }
+
+    .window.minimized {
+      display: none !important;
+    }
+
+    /* Linux / GNOME-like titlebar */
+    .window-titlebar {
+      height: 40px;
+      background: linear-gradient(180deg, #3d4450 0%, #323844 100%);
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      padding-right: 6px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #1a1d24;
+      gap: 6px;
+      cursor: move;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .window.maximized .window-titlebar {
+      padding-top: var(--safe-top);
+      min-height: calc(40px + var(--safe-top));
+      cursor: default;
+    }
+
+    .window-title {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #e8eaed;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 4px;
+      flex-direction: row;
+    }
+
+    .window-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,0.25);
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #4a5160;
+      color: #cdd0d5;
+    }
+
+    .window-btn:active { filter: brightness(0.9); }
+
+    .window-btn.close {
+      background: #c01c28;
+      color: #fff;
+      border-color: #a01018;
+    }
+    .window-btn.maximize { background: #5a6350; }
+    .window-btn.minimize { background: #5c5640; }
+
+    /* Chat avatars */
+    .chat-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      max-width: 95%;
+    }
+    .chat-row.user { align-self: flex-end; flex-direction: row-reverse; }
+    .chat-row.bot { align-self: flex-start; }
+    .chat-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      object-fit: cover;
+      background: #334155;
+      border: 2px solid #475569;
+    }
+    .chat-bubble {
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      max-width: 100%;
+    }
+    .chat-row.user .chat-bubble {
+      background: #1d4ed8;
+      color: #fff;
+      border-radius: 14px 14px 4px 14px;
+    }
+    .chat-row.bot .chat-bubble {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 14px 14px 14px 4px;
+      font-size: 13px;
+    }
+    .chat-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+      padding: 0 4px;
+    }
+
+    /* Live2D companion — Clippy-style bubble */
+    #mishka-live {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--taskbar-h) + var(--safe-bottom) + 4px);
+      transform: translateX(-50%);
+      z-index: 9000;
+      width: 120px;
+      height: 150px;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #mishka-live .mk-stage {
+      width: 110px;
+      height: 130px;
+      position: relative;
+    }
+    #mishka-live #mk-canvas {
+      width: 110px;
+      height: 130px;
+      display: block;
+      border-radius: 12px;
+    }
+    #mishka-live .mk-sprite { display: none; }
+    #mishka-live .mk-mouth { display: none; }
+    #mishka-live .mk-bubble {
+      position: absolute;
+      bottom: 128px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fffef5;
+      color: #1a1a1a;
+      border: 1px solid #c4b896;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.35;
+      max-width: 200px;
+      width: max-content;
+      text-align: left;
+      box-shadow: 2px 3px 0 rgba(0,0,0,0.12);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 2;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    #mishka-live .mk-bubble.show { opacity: 1; }
+    #mishka-live .mk-bubble::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -7px;
+      margin-left: -7px;
+      border: 7px solid transparent;
+      border-top-color: #fffef5;
+      filter: drop-shadow(0 1px 0 #c4b896);
+    }
+    #mishka-live .mk-name {
+      font-size: 10px;
+      color: #e2e8f0;
+      text-shadow: 0 1px 3px #000;
+      margin-top: 0;
+      white-space: nowrap;
+    }
+    }
+
+    .linux-tabs {
+      display: flex;
+      gap: 2px;
+      background: #252a33;
+      padding: 4px 6px 0;
+      overflow-x: auto;
+      flex-shrink: 0;
+      border-bottom: 1px solid #1a1d24;
+    }
+    .linux-tab {
+      background: #323844;
+      color: #b0b5bf;
+      border: 1px solid #1a1d24;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      max-width: 140px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .linux-tab.active { background: #2d323c; color: #fff; }
+    .linux-tab .tab-x { opacity: 0.6; font-size: 11px; }
+    .linux-tab-add {
+      background: transparent;
+      border: none;
+      color: #9aa0aa;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .window-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px;
+      font-size: 15px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .window-content.no-pad {
+      padding: 0;
+    }
+
+    /* ===== FILE MANAGER ===== */
+    .fm-toolbar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 9px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 40px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn.secondary { background: #334155; }
+    .btn.danger { background: var(--danger); }
+    .btn.icon-only {
+      padding: 9px;
+      min-width: 40px;
+      justify-content: center;
+    }
+
+    .path-bar {
+      background: #0f172a;
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      margin-bottom: 10px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+      gap: 8px;
+    }
+
+    .file-item {
+      padding: 12px 6px;
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      border: 2px solid transparent;
+    }
+
+    .file-item:active {
+      background: rgba(255,255,255,0.08);
+      transform: scale(0.97);
+    }
+
+    .file-item.selected {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: var(--accent);
+    }
+
+    .file-item .icon-wrap {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 6px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .file-item .icon-wrap.folder { background: linear-gradient(145deg, #64748b, #334155); }
+    .file-item .icon-wrap.file   { background: linear-gradient(145deg, #475569, #1e293b); }
+    .file-item .icon-wrap.image  { background: linear-gradient(145deg, #ec4899, #be185d); padding: 0; overflow: hidden; }
+    .file-item .icon-wrap.text   { background: linear-gradient(145deg, #6366f1, #4338ca); }
+    .file-item .name { font-size: 12px; word-break: break-word; line-height: 1.3; }
+    .file-item .size { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ===== TERMINAL ===== */
+    .term-wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--term-bg);
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .term-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      color: var(--term-fg);
+      white-space: pre-wrap;
+      word-break: break-word;
+      -webkit-overflow-scrolling: touch;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .term-output .t-cmd { color: var(--term-cyan); }
+    .term-output .t-ok { color: var(--term-green); }
+    .term-output .t-err { color: var(--term-red); }
+    .term-output .t-warn { color: var(--term-yellow); }
+    .term-output .t-info { color: var(--text-muted); }
+    .term-output .t-prompt { color: var(--term-green); font-weight: 600; }
+
+    .term-input-line {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid #1e293b;
+      background: #0a101c;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .term-prompt {
+      color: var(--term-green);
+      font-weight: 600;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .term-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--term-fg);
+      font-family: inherit;
+      font-size: 14px; /* no iOS zoom */
+      caret-color: var(--term-cyan);
+    }
+
+    .term-input::placeholder {
+      color: #475569;
+    }
+
+    /* ===== LOGS ===== */
+    .logs-toolbar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .log-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .log-badge.error { background: rgba(239,68,68,0.2); color: #f87171; }
+    .log-badge.warn { background: rgba(234,179,8,0.2); color: #facc15; }
+    .log-badge.info { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .log-badge.debug { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+    .logs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .log-entry {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      line-height: 1.4;
+    }
+
+    .log-entry .log-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 4px;
+      flex-wrap: wrap;
+    }
+
+    .log-entry .log-time {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .log-entry .log-msg {
+      word-break: break-word;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .log-entry.level-error { border-left: 3px solid var(--danger); }
+    .log-entry.level-warn { border-left: 3px solid var(--warning); }
+    .log-entry.level-info { border-left: 3px solid var(--accent); }
+    .log-entry.level-debug { border-left: 3px solid #64748b; }
+
+    /* ===== SETTINGS ===== */
+    .settings-section {
+      margin-bottom: 22px;
+    }
+
+    .settings-section h3 {
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+
+    .wallpaper-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .wallpaper-option {
+      height: 64px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: 3px solid transparent;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .wallpaper-option.active {
+      border-color: var(--accent);
+    }
+
+    .color-picker-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    input[type="color"] {
+      width: 44px;
+      height: 36px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+    }
+
+    input[type="file"] { display: none; }
+
+    /* ===== CONTEXT MENU ===== */
+    #context-menu {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #1e293b;
+      border-radius: 16px 16px 0 0;
+      padding: 10px 0 calc(14px + var(--safe-bottom));
+      z-index: 10000;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+      display: none;
+      animation: sheetUp 0.2s ease;
+    }
+
+    #context-menu.visible { display: block; }
+
+    @keyframes sheetUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .ctx-handle {
+      width: 36px;
+      height: 4px;
+      background: #475569;
+      border-radius: 2px;
+      margin: 0 auto 10px;
+    }
+
+    .ctx-item {
+      padding: 13px 18px;
+      cursor: pointer;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 46px;
+    }
+
+    .ctx-item:active { background: rgba(59, 130, 246, 0.2); }
+    .ctx-separator { height: 1px; background: var(--border); margin: 4px 14px; }
+
+    .ctx-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 9999;
+      display: none;
+    }
+
+    .ctx-overlay.visible { display: block; }
+
+    /* ===== NOTIFICATIONS ===== */
+    #notifications {
+      position: fixed;
+      top: calc(10px + var(--safe-top));
+      left: 10px;
+      right: 10px;
+      z-index: 10001;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .notification {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      animation: notifIn 0.22s ease;
+      font-size: 13px;
+      pointer-events: auto;
+    }
+
+    .notification.success { border-left: 4px solid var(--success); }
+    .notification.error { border-left: 4px solid var(--danger); }
+    .notification.info { border-left: 4px solid var(--accent); }
+    .notification.warn { border-left: 4px solid var(--warning); }
+
+    @keyframes notifIn {
+      from { transform: translateY(-16px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* ===== MODAL ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 10002;
+    }
+
+    .modal {
+      background: var(--bg-window);
+      border-radius: 16px 16px 0 0;
+      padding: 22px 18px calc(22px + var(--safe-bottom));
+      width: 100%;
+      max-width: 480px;
+      border: 1px solid var(--border);
+      animation: sheetUp 0.2s ease;
+    }
+
+    .modal h3 { margin-bottom: 14px; font-size: 17px; }
+
+    .modal input[type="text"] {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .modal-actions .btn {
+      flex: 1;
+      justify-content: center;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-muted);
+    }
+
+    .empty-state .icon { font-size: 48px; margin-bottom: 10px; }
+
+    #bg-status {
+      position: fixed;
+      bottom: calc(var(--taskbar-h) + var(--safe-bottom) + 10px);
+      left: 10px;
+      right: 10px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      z-index: 9998;
+      display: none;
+      text-align: center;
+    }
+
+    #bg-status.active { display: block; }
+
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--accent);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Larger screens */
+    @media (min-width: 768px) {
+      .desktop-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        padding: 24px;
+        gap: 12px;
+      }
+
+      .window {
+        top: 36px;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        width: min(760px, 92vw);
+        height: min(580px, 82vh);
+        transform: translateX(-50%);
+        border-radius: 14px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        border: 1px solid var(--border);
+      }
+
+      .modal-overlay { align-items: center; }
+      .modal {
+        border-radius: 16px;
+        max-width: 400px;
+        padding: 24px;
+      }
+
+      #context-menu {
+        left: auto;
+        right: auto;
+        bottom: auto;
+        border-radius: 12px;
+        min-width: 220px;
+        padding: 8px 0;
+        max-width: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="desktop">
+    <div class="desktop-grid" id="desktop-grid"></div>
+  </div>
+
+  <div id="taskbar">
+    <button class="taskbar-btn" id="btn-files" data-id="files">
+      <span class="tb-icon-wrap"><img src="icons/files.png" alt="" /></span>
+      <span>Файлы</span>
+    </button>
+    <button class="taskbar-btn" id="btn-browser" data-id="browser">
+      <span class="tb-icon-wrap"><img src="icons/browser.png" alt="" /></span>
+      <span>Браузер</span>
+    </button>
+    <button class="taskbar-btn" id="btn-paint" data-id="paint">
+      <span class="tb-icon-wrap"><img src="icons/paint.png" alt="" /></span>
+      <span>Рисовалка</span>
+    </button>
+    <button class="taskbar-btn" id="btn-term" data-id="term">
+      <span class="tb-icon-wrap"><img src="icons/terminal.webp" alt="" onerror="this.src='icons/terminal.png'" /></span>
+      <span>Терминал</span>
+    </button>
+    <button class="taskbar-btn" id="btn-aask" data-id="aask">
+      <span class="tb-icon-wrap"><img src="icons/aask.png" alt="" /></span>
+      <span>Чат</span>
+    </button>
+  </div>
+
+  <div class="ctx-overlay" id="ctx-overlay"></div>
+  <div id="context-menu"></div>
+  <div id="notifications"></div>
+  <div id="bg-status"><span class="spinner"></span> Фоновая задача...</div>
+
+  <div id="mishka-live" title="Юки">
+    <div class="mk-bubble" id="mk-bubble"></div>
+    <div class="mk-stage">
+      <canvas id="mk-canvas" width="220" height="260"></canvas>
+      <img class="mk-sprite" id="mk-sprite" src="icons/mishka.png" alt="Юки" />
+    </div>
+    <div class="mk-name">Юки</div>
+  </div>
+
+  <input type="file" id="file-input" multiple accept="*/*" />
+
+  
+  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
+  <script>
+    // ============================================================
+    // LOGGER
+    // ============================================================
+    const Logger = {
+      entries: [],
+      maxEntries: 300,
+      listeners: [],
+
+      _add(level, msg, meta = {}) {
+        const entry = {
+          id: Date.now() + Math.random(),
+          level,
+          msg: String(msg),
+          meta,
+          time: new Date()
+        };
+        this.entries.unshift(entry);
+        if (this.entries.length > this.maxEntries) {
+          this.entries.length = this.maxEntries;
+        }
+        try {
+          localStorage.setItem("vdesktop_logs", JSON.stringify(this.entries.slice(0, 100)));
+        } catch (_) {}
+        this.listeners.forEach(fn => {
+          try { fn(entry); } catch (_) {}
+        });
+        return entry;
+      },
+
+      info(msg, meta) { return this._add("info", msg, meta); },
+      warn(msg, meta) { return this._add("warn", msg, meta); },
+      error(msg, meta) { return this._add("error", msg, meta); },
+      debug(msg, meta) { return this._add("debug", msg, meta); },
+
+      load() {
+        try {
+          const raw = localStorage.getItem("vdesktop_logs");
+          if (raw) this.entries = JSON.parse(raw);
+        } catch (_) {}
+      },
+
+      clear() {
+        this.entries = [];
+        localStorage.removeItem("vdesktop_logs");
+        this.listeners.forEach(fn => { try { fn(null); } catch (_) {} });
+      },
+
+      onUpdate(fn) { this.listeners.push(fn); }
+    };
+
+    // Global error handlers
+    window.addEventListener("error", (e) => {
+      Logger.error(`JS Error: ${e.message}`, {
+        file: e.filename,
+        line: e.lineno,
+        col: e.colno
+      });
+    });
+
+    window.addEventListener("unhandledrejection", (e) => {
+      Logger.error(`Unhandled Promise: ${e.reason}`, {});
+    });
+
+    // ============================================================
+    // VIRTUAL FILE SYSTEM
+    // ============================================================
+    const FS = {
+      root: { name: "/", type: "folder", children: {} },
+
+      load() {
+        try {
+          const data = localStorage.getItem("vdesktop_fs");
+          if (data) {
+            this.root = JSON.parse(data);
+            Logger.info("Файловая система загружена");
+          } else {
+            this.mkdir("/Документы");
+            this.mkdir("/Изображения");
+            this.mkdir("/Загрузки");
+            this.mkdir("/bin");
+            this.writeFile("/Документы/readme.txt",
+              "Добро пожаловать в Virtual Desktop!\n\n" +
+              "Доступны:\n- Файловый менеджер\n- Bash-подобный терминал\n- Логи ошибок\n\n" +
+              "Команды терминала: help, ls, cd, cat, mkdir, rm, echo, pwd, clear, date, whoami, uname, df, history");
+            this.writeFile("/bin/hello", "#!/bin/vsh\necho Hello from Virtual Shell!");
+            this.save();
+            Logger.info("Создана начальная файловая система");
+          }
+        } catch (e) {
+          Logger.error("Ошибка загрузки ФС: " + e.message);
+        }
+      },
+
+      save() {
+        try {
+          localStorage.setItem("vdesktop_fs", JSON.stringify(this.root));
+        } catch (e) {
+          Logger.error("Ошибка сохранения ФС: " + e.message);
+          notify("Ошибка сохранения (мало места?)", "error");
+        }
+      },
+
+      resolve(path) {
+        if (!path || path === "/" || path === "") return this.root;
+        const parts = path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+        let node = this.root;
+        for (const part of parts) {
+          if (!node.children || !node.children[part]) return null;
+          node = node.children[part];
+        }
+        return node;
+      },
+
+      parentPath(path) {
+        if (!path || path === "/") return "/";
+        const parts = path.replace(/\/+$/, "").split("/");
+        parts.pop();
+        return parts.length <= 1 ? "/" : parts.join("/");
+      },
+
+      basename(path) {
+        return (path || "/").replace(/\/+$/, "").split("/").pop() || "/";
+      },
+
+      normalize(cwd, path) {
+        if (!path || path === ".") return cwd;
+        if (path === "..") return this.parentPath(cwd);
+        if (path.startsWith("/")) return path === "/" ? "/" : "/" + path.replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+        // relative
+        const base = cwd === "/" ? "" : cwd;
+        const joined = (base + "/" + path).replace(/\/+/g, "/");
+        // resolve .. and .
+        const parts = joined.split("/").filter(Boolean);
+        const stack = [];
+        for (const p of parts) {
+          if (p === "..") stack.pop();
+          else if (p !== ".") stack.push(p);
+        }
+        return "/" + stack.join("/");
+      },
+
+      mkdir(path) {
+        const parent = this.resolve(this.parentPath(path));
+        const name = this.basename(path);
+        if (!parent || parent.type !== "folder") return false;
+        if (parent.children[name]) return false;
+        parent.children[name] = { name, type: "folder", children: {}, created: Date.now() };
+        this.save();
+        Logger.debug("mkdir " + path);
+        return true;
+      },
+
+      writeFile(path, content, mime = "text/plain") {
+        const parent = this.resolve(this.parentPath(path));
+        const name = this.basename(path);
+        if (!parent || parent.type !== "folder") return false;
+        const isBinary = typeof content === "string" && content.startsWith("data:");
+        parent.children[name] = {
+          name, type: "file", content, mime,
+          size: isBinary ? Math.round((content.length * 3) / 4) : (content ? content.length : 0),
+          created: Date.now(), modified: Date.now()
+        };
+        this.save();
+        Logger.debug("write " + path);
+        return true;
+      },
+
+      delete(path) {
+        if (path === "/") return false;
+        const parent = this.resolve(this.parentPath(path));
+        const name = this.basename(path);
+        if (!parent || !parent.children[name]) return false;
+        delete parent.children[name];
+        this.save();
+        Logger.debug("rm " + path);
+        return true;
+      },
+
+      list(path) {
+        const node = this.resolve(path);
+        if (!node || node.type !== "folder") return [];
+        return Object.values(node.children).sort((a, b) => {
+          if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+          return a.name.localeCompare(b.name, "ru");
+        });
+      },
+
+      getSize(node) {
+        if (!node) return 0;
+        if (node.type === "file") return node.size || 0;
+        let total = 0;
+        for (const child of Object.values(node.children || {})) {
+          total += this.getSize(child);
+        }
+        return total;
+      },
+
+      readText(path) {
+        const node = this.resolve(path);
+        if (!node || node.type !== "file") return null;
+        let text = node.content || "";
+        if (text.startsWith("data:")) {
+          try {
+            const b64 = text.split(",")[1] || "";
+            text = decodeURIComponent(escape(atob(b64)));
+          } catch {
+            return null;
+          }
+        }
+        return text;
+      }
+    };
+
+    // ============================================================
+    // VIRTUAL SHELL (bash-like)
+    // ============================================================
+    const Shell = {
+      cwd: "/",
+      history: [],
+      histIdx: -1,
+      env: {
+        USER: localStorage.getItem("vdesktop_username") || "user",
+        HOME: "/",
+        SHELL: "/bin/vsh",
+        TERM: "vdesktop",
+        LANG: "ru_RU.UTF-8"
+      },
+
+      prompt() {
+        const dir = this.cwd === "/" ? "/" : this.cwd.split("/").pop();
+        return `${this.env.USER}@vdesktop:${dir}$`;
+      },
+
+      setUser(name) {
+        const n = String(name || "").trim().replace(/\s+/g, "_").slice(0, 24);
+        if (!n) return false;
+        this.env.USER = n;
+        localStorage.setItem("vdesktop_username", n);
+        return true;
+      },
+
+      run(line) {
+        const trimmed = (line || "").trim();
+        if (!trimmed) return { out: "", code: 0 };
+
+        this.history.push(trimmed);
+        if (this.history.length > 100) this.history.shift();
+        this.histIdx = this.history.length;
+
+        Logger.debug("shell: " + trimmed);
+
+        // pipe / simple only — no real pipes for simplicity
+        const parts = this._parse(trimmed);
+        const cmd = parts[0];
+        const args = parts.slice(1);
+
+        try {
+          switch (cmd) {
+            case "help": return this._help();
+            case "clear": return { out: "__CLEAR__", code: 0 };
+            case "pwd": return { out: this.cwd, code: 0 };
+            case "cd": return this._cd(args);
+            case "ls": return this._ls(args);
+            case "cat": return this._cat(args);
+            case "mkdir": return this._mkdir(args);
+            case "rm": return this._rm(args);
+            case "touch": return this._touch(args);
+            case "echo": return this._echo(args);
+            case "date": return { out: new Date().toString(), code: 0 };
+            case "whoami": return { out: this.env.USER, code: 0 };
+            case "su":
+            case "chuser":
+            case "username": {
+              if (!args[0]) return { out: "usage: username <имя>", code: 1 };
+              if (!this.setUser(args[0])) return { out: "invalid name", code: 1 };
+              return { out: "user=" + this.env.USER, code: 0 };
+            }
+            case "uname": return { out: "VirtualDesktop 1.0 (JS) arm64", code: 0 };
+            case "df": return this._df();
+            case "du": return this._du(args);
+            case "history": return { out: this.history.map((h, i) => `  ${i + 1}  ${h}`).join("\n"), code: 0 };
+            case "env":
+            case "printenv": return { out: Object.entries(this.env).map(([k, v]) => `${k}=${v}`).join("\n"), code: 0 };
+            case "export": return this._export(args);
+            case "tree": return this._tree(args);
+            case "find": return this._find(args);
+            case "head": return this._head(args);
+            case "wc": return this._wc(args);
+            case "log": return this._logCmd(args);
+            case "exit": return { out: "logout", code: 0 };
+            default:
+              // try run as script from /bin or path
+              if (cmd.startsWith("./") || cmd.startsWith("/")) {
+                return this._runScript(cmd, args);
+              }
+              Logger.warn("Команда не найдена: " + cmd);
+              return { out: `vsh: ${cmd}: command not found`, code: 127 };
+          }
+        } catch (e) {
+          Logger.error("Shell error: " + e.message);
+          return { out: `vsh: error: ${e.message}`, code: 1 };
+        }
+      },
+
+      _parse(line) {
+        const result = [];
+        let cur = "";
+        let inQuote = null;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (inQuote) {
+            if (c === inQuote) inQuote = null;
+            else cur += c;
+          } else if (c === '"' || c === "'") {
+            inQuote = c;
+          } else if (c === " " || c === "\t") {
+            if (cur) { result.push(cur); cur = ""; }
+          } else {
+            cur += c;
+          }
+        }
+        if (cur) result.push(cur);
+        return result;
+      },
+
+      _help() {
+        return {
+          out: `Virtual Shell (vsh) — доступные команды:
+
+  ls [path]       — список файлов
+  cd [path]       — сменить каталог
+  pwd             — текущий путь
+  cat <file>      — показать файл
+  mkdir <name>    — создать папку
+  rm <path>       — удалить
+  touch <file>    — создать пустой файл
+  echo [text]     — вывести текст
+  tree [path]     — дерево каталогов
+  find [path]     — найти файлы
+  head <file>     — первые строки
+  wc <file>       — подсчёт строк/слов
+  df              — место в хранилище
+  du [path]       — размер
+  date / whoami / uname / env
+  history         — история команд
+  log [level]     — последние логи
+  clear           — очистить экран
+  help            — эта справка
+
+Файловая система виртуальная (localStorage).
+Логи ошибок доступны командой log или через кнопку «Логи».`,
+          code: 0
+        };
+      },
+
+      _cd(args) {
+        const target = args[0] || "/";
+        const path = FS.normalize(this.cwd, target);
+        const node = FS.resolve(path);
+        if (!node) return { out: `cd: ${target}: No such file or directory`, code: 1 };
+        if (node.type !== "folder") return { out: `cd: ${target}: Not a directory`, code: 1 };
+        this.cwd = path === "" ? "/" : path;
+        return { out: "", code: 0 };
+      },
+
+      _ls(args) {
+        const target = args.find(a => !a.startsWith("-")) || ".";
+        const path = FS.normalize(this.cwd, target);
+        const node = FS.resolve(path);
+        if (!node) return { out: `ls: cannot access '${target}': No such file or directory`, code: 1 };
+        if (node.type === "file") return { out: node.name, code: 0 };
+        const items = FS.list(path);
+        if (items.length === 0) return { out: "", code: 0 };
+        const long = args.includes("-l") || args.includes("-la") || args.includes("-al");
+        if (long) {
+          const lines = items.map(it => {
+            const type = it.type === "folder" ? "d" : "-";
+            const size = it.type === "file" ? (it.size || 0) : 0;
+            const date = new Date(it.created || Date.now()).toLocaleDateString("ru-RU");
+            return `${type}rwxr-xr-x  1 user  user  ${String(size).padStart(8)}  ${date}  ${it.name}${it.type === "folder" ? "/" : ""}`;
+          });
+          return { out: lines.join("\n"), code: 0 };
+        }
+        return {
+          out: items.map(it => it.type === "folder" ? it.name + "/" : it.name).join("  "),
+          code: 0
+        };
+      },
+
+      _cat(args) {
+        if (!args.length) return { out: "cat: missing operand", code: 1 };
+        const outputs = [];
+        for (const a of args) {
+          const path = FS.normalize(this.cwd, a);
+          const text = FS.readText(path);
+          if (text === null) {
+            const node = FS.resolve(path);
+            if (!node) outputs.push(`cat: ${a}: No such file or directory`);
+            else if (node.type === "folder") outputs.push(`cat: ${a}: Is a directory`);
+            else outputs.push(`cat: ${a}: cannot read`);
+          } else {
+            outputs.push(text);
+          }
+        }
+        return { out: outputs.join("\n"), code: 0 };
+      },
+
+      _mkdir(args) {
+        if (!args.length) return { out: "mkdir: missing operand", code: 1 };
+        for (const a of args) {
+          const path = FS.normalize(this.cwd, a);
+          if (FS.resolve(path)) return { out: `mkdir: cannot create directory '${a}': File exists`, code: 1 };
+          if (!FS.mkdir(path)) return { out: `mkdir: cannot create directory '${a}'`, code: 1 };
+        }
+        renderDesktop();
+        return { out: "", code: 0 };
+      },
+
+      _rm(args) {
+        if (!args.length) return { out: "rm: missing operand", code: 1 };
+        for (const a of args.filter(x => !x.startsWith("-"))) {
+          const path = FS.normalize(this.cwd, a);
+          if (!FS.resolve(path)) return { out: `rm: cannot remove '${a}': No such file or directory`, code: 1 };
+          if (!FS.delete(path)) return { out: `rm: cannot remove '${a}'`, code: 1 };
+        }
+        renderDesktop();
+        if (state.openWindows["fm"]) renderFileList();
+        return { out: "", code: 0 };
+      },
+
+      _touch(args) {
+        if (!args.length) return { out: "touch: missing operand", code: 1 };
+        for (const a of args) {
+          const path = FS.normalize(this.cwd, a);
+          if (!FS.resolve(path)) {
+            FS.writeFile(path, "", "text/plain");
+          }
+        }
+        renderDesktop();
+        return { out: "", code: 0 };
+      },
+
+      _echo(args) {
+        return { out: args.join(" "), code: 0 };
+      },
+
+      _df() {
+        const used = FS.getSize(FS.root);
+        const limit = 5 * 1024 * 1024; // soft limit ~5MB for localStorage
+        const pct = Math.min(100, Math.round((used / limit) * 100));
+        return {
+          out: `Filesystem      Size    Used   Avail  Use%\n` +
+               `vdesktop       5.0M  ${formatSize(used).padStart(6)}  ${formatSize(limit - used).padStart(6)}  ${pct}%`,
+          code: 0
+        };
+      },
+
+      _du(args) {
+        const target = args[0] || ".";
+        const path = FS.normalize(this.cwd, target);
+        const node = FS.resolve(path);
+        if (!node) return { out: `du: cannot access '${target}'`, code: 1 };
+        return { out: `${formatSize(FS.getSize(node))}\t${path}`, code: 0 };
+      },
+
+      _export(args) {
+        if (!args.length) return this.run("env");
+        for (const a of args) {
+          const eq = a.indexOf("=");
+          if (eq > 0) {
+            this.env[a.slice(0, eq)] = a.slice(eq + 1);
+          }
+        }
+        return { out: "", code: 0 };
+      },
+
+      _tree(args) {
+        const target = args[0] || ".";
+        const path = FS.normalize(this.cwd, target);
+        const node = FS.resolve(path);
+        if (!node) return { out: `tree: ${target}: No such file`, code: 1 };
+
+        const lines = [path];
+        const walk = (n, prefix) => {
+          const kids = Object.values(n.children || {}).sort((a, b) => a.name.localeCompare(b.name));
+          kids.forEach((child, i) => {
+            const last = i === kids.length - 1;
+            const branch = last ? "└── " : "├── ";
+            lines.push(prefix + branch + child.name + (child.type === "folder" ? "/" : ""));
+            if (child.type === "folder") {
+              walk(child, prefix + (last ? "    " : "│   "));
+            }
+          });
+        };
+        if (node.type === "folder") walk(node, "");
+        return { out: lines.join("\n"), code: 0 };
+      },
+
+      _find(args) {
+        const target = args[0] || ".";
+        const path = FS.normalize(this.cwd, target);
+        const node = FS.resolve(path);
+        if (!node) return { out: `find: ${target}: No such file`, code: 1 };
+        const results = [];
+        const walk = (n, p) => {
+          results.push(p);
+          if (n.type === "folder") {
+            for (const child of Object.values(n.children || {})) {
+              walk(child, p === "/" ? "/" + child.name : p + "/" + child.name);
+            }
+          }
+        };
+        walk(node, path);
+        return { out: results.join("\n"), code: 0 };
+      },
+
+      _head(args) {
+        const n = 10;
+        const file = args.find(a => !a.startsWith("-")) || args[0];
+        if (!file) return { out: "head: missing file", code: 1 };
+        const path = FS.normalize(this.cwd, file);
+        const text = FS.readText(path);
+        if (text === null) return { out: `head: ${file}: No such file`, code: 1 };
+        return { out: text.split("\n").slice(0, n).join("\n"), code: 0 };
+      },
+
+      _wc(args) {
+        const file = args[0];
+        if (!file) return { out: "wc: missing file", code: 1 };
+        const path = FS.normalize(this.cwd, file);
+        const text = FS.readText(path);
+        if (text === null) return { out: `wc: ${file}: No such file`, code: 1 };
+        const lines = text.split("\n").length;
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        const chars = text.length;
+        return { out: `  ${lines}  ${words}  ${chars}  ${file}`, code: 0 };
+      },
+
+      _logCmd(args) {
+        const level = args[0];
+        let list = Logger.entries.slice(0, 20);
+        if (level && ["error", "warn", "info", "debug"].includes(level)) {
+          list = list.filter(e => e.level === level);
+        }
+        if (!list.length) return { out: "(no logs)", code: 0 };
+        return {
+          out: list.map(e => {
+            const t = new Date(e.time).toLocaleTimeString("ru-RU");
+            return `[${t}] ${e.level.toUpperCase().padEnd(5)} ${e.msg}`;
+          }).join("\n"),
+          code: 0
+        };
+      },
+
+      _runScript(cmd, args) {
+        const path = FS.normalize(this.cwd, cmd);
+        const text = FS.readText(path);
+        if (text === null) return { out: `vsh: ${cmd}: No such file`, code: 127 };
+        // Very simple: only echo lines
+        const lines = text.split("\n").filter(l => l && !l.startsWith("#"));
+        const outs = [];
+        for (const l of lines) {
+          if (l.startsWith("echo ")) outs.push(l.slice(5));
+        }
+        return { out: outs.join("\n") || "(script executed)", code: 0 };
+      }
+    };
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    const state = {
+      currentPath: "/",
+      selectedFiles: new Set(),
+      openWindows: {},
+      wallpaper: localStorage.getItem("vdesktop_wallpaper") || "gradient1",
+      bgTasks: 0
+    };
+
+    const wallpapers = {
+      gradient1: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)",
+      gradient2: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+      gradient3: "linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 40%, #16213e 100%)",
+      gradient4: "linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%)",
+      solid1: "#0f172a",
+      solid2: "#1e1b4b",
+      solid3: "#14532d",
+      solid4: "#7c2d12"
+    };
+
+    // ============================================================
+    // UTILS
+    // ============================================================
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function notify(msg, type = "info", duration = 2800) {
+      const el = document.createElement("div");
+      el.className = `notification ${type}`;
+      el.textContent = msg;
+      document.getElementById("notifications").appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = "0";
+        el.style.transition = "opacity 0.3s";
+        setTimeout(() => el.remove(), 300);
+      }, duration);
+    }
+
+    function getIcon(item) {
+      if (item.type === "folder") return "📁";
+      const mime = item.mime || "";
+      if (mime.startsWith("image/")) return "🖼️";
+      if (mime.startsWith("video/")) return "🎬";
+      if (mime.startsWith("audio/")) return "🎵";
+      if (mime.includes("pdf")) return "📄";
+      if (mime.includes("zip") || mime.includes("rar")) return "📦";
+      if (mime.includes("javascript") || mime.includes("json") || mime.includes("html")) return "📜";
+      if (mime.startsWith("text/")) return "📝";
+      return "📄";
+    }
+
+    function getIconClass(item) {
+      if (item.type === "folder") return "folder";
+      const mime = item.mime || "";
+      if (mime.startsWith("image/")) return "image";
+      if (mime.startsWith("text/") || mime === "application/json") return "text";
+      return "file";
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function isMobile() {
+      return window.innerWidth < 768;
+    }
+
+    // ============================================================
+    // DESKTOP
+    // ============================================================
+    function renderDesktop() {
+      const desktop = document.getElementById("desktop");
+      const grid = document.getElementById("desktop-grid");
+
+      const wp = state.wallpaper;
+      if (wp.startsWith("data:") || wp.startsWith("http") || wp.startsWith("blob:")) {
+        desktop.style.backgroundImage = `url(${wp})`;
+        desktop.style.background = "";
+      } else if (wallpapers[wp]) {
+        desktop.style.backgroundImage = "";
+        desktop.style.background = wallpapers[wp];
+      } else if (wp.startsWith("#")) {
+        desktop.style.backgroundImage = "";
+        desktop.style.background = wp;
+      }
+
+      // System app icons — «мелки» PNG/WebP из icons/
+      const systemIcons = [
+        { name: "Файлы",      src: "icons/files.png",     action: "files" },
+        { name: "Браузер",    src: "icons/browser.png",   action: "browser" },
+        { name: "Рисовалка",  src: "icons/paint.png",     action: "paint" },
+        { name: "Терминал",   src: "icons/terminal.webp", action: "term", fallback: "icons/terminal.png" },
+        { name: "Чат",        src: "icons/aask.png",      action: "aask" },
+        { name: "Логи",       src: "icons/logs.png",      action: "logs" },
+        { name: "Настройки",  src: "icons/settings.png",  action: "settings" },
+        { name: "Загрузить",  src: "icons/upload.png",    action: "upload" }
+      ];
+
+      const items = FS.list("/");
+      let html = systemIcons.map(s => `
+        <div class="desktop-icon" data-app="${s.action}">
+          <div class="icon-wrap app-img">
+            <img class="app-icon-img" src="${s.src}" alt="${s.name}"
+              ${s.fallback ? `onerror="this.onerror=null;this.src='${s.fallback}'"` : ""} />
+          </div>
+          <div class="name">${s.name}</div>
+        </div>
+      `).join("");
+
+      html += items.map(item => {
+        // Real image thumbnail for PNG/JPG/etc.
+        const isImg = item.type === "file" && (
+          (item.mime && item.mime.startsWith("image/")) ||
+          /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(item.name || "")
+        );
+        const iconInner = isImg && item.content
+          ? `<img src="${item.content}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:13px" />`
+          : `<span class="icon">${getIcon(item)}</span>`;
+        const cls = isImg ? "image" : getIconClass(item);
+        return `
+        <div class="desktop-icon" data-name="${escapeHtml(item.name)}" data-type="${item.type}">
+          <div class="icon-wrap ${cls}">${iconInner}</div>
+          <div class="name">${escapeHtml(item.name)}</div>
+        </div>`;
+      }).join("");
+
+      grid.innerHTML = html;
+
+      grid.querySelectorAll(".desktop-icon[data-app]").forEach(el => {
+        el.addEventListener("click", () => {
+          const app = el.dataset.app;
+          if (app === "files") openFileManager(state.currentPath || "/");
+          else if (app === "browser") openBrowser();
+          else if (app === "paint") openPaint();
+          else if (app === "term") openTerminal();
+          else if (app === "aask") openAAsk();
+          else if (app === "logs") openLogs();
+          else if (app === "settings") openSettings();
+          else if (app === "upload") document.getElementById("file-input").click();
+        });
+      });
+
+      grid.querySelectorAll(".desktop-icon[data-name]").forEach(el => {
+        const name = el.dataset.name;
+        const type = el.dataset.type;
+        const path = "/" + name;
+
+        el.addEventListener("click", () => {
+          if (type === "folder") openFileManager(path);
+          else openFile(path);
+        });
+
+        setupLongPress(el, (e) => {
+          const item = FS.resolve(path);
+          if (item) showContextMenu(e, item, "/");
+        });
+      });
+
+      setupLongPress(desktop, (e) => {
+        if (e.target === desktop || e.target.id === "desktop-grid") {
+          showDesktopContextMenu(e);
+        }
+      });
+    }
+
+    // ============================================================
+    // LONG PRESS
+    // ============================================================
+    function setupLongPress(el, callback) {
+      let timer = null;
+      let startX, startY;
+
+      const start = (e) => {
+        const touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        timer = setTimeout(() => {
+          timer = null;
+          if (navigator.vibrate) navigator.vibrate(25);
+          callback(e.touches ? e.touches[0] : e);
+        }, 480);
+      };
+
+      const move = (e) => {
+        if (!timer) return;
+        const touch = e.touches ? e.touches[0] : e;
+        if (Math.abs(touch.clientX - startX) > 12 || Math.abs(touch.clientY - startY) > 12) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
+      const end = () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+      };
+
+      el.addEventListener("touchstart", start, { passive: true });
+      el.addEventListener("touchmove", move, { passive: true });
+      el.addEventListener("touchend", end);
+      el.addEventListener("touchcancel", end);
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        callback(e);
+      });
+    }
+
+    // ============================================================
+    // WINDOWS
+    // ============================================================
+    function createWindow(id, title, contentHTML, opts = {}) {
+      // Restore if minimized
+      if (state.openWindows[id]) {
+        const existing = state.openWindows[id];
+        existing.classList.remove("minimized");
+        existing.style.display = "flex";
+        existing.style.zIndex = ++state.zIndex || (state.zIndex = 200);
+        return existing;
+      }
+
+      const win = document.createElement("div");
+      win.className = "window";
+      win.id = "win-" + id;
+      state.zIndex = (state.zIndex || 200) + 1;
+      win.style.zIndex = state.zIndex;
+
+      const noPad = opts.noPad ? " no-pad" : "";
+      const mobile = isMobile();
+
+      // Default geometry
+      if (mobile) {
+        win.classList.add("maximized");
+      } else {
+        const w = opts.width || Math.min(720, window.innerWidth - 40);
+        const h = opts.height || Math.min(520, window.innerHeight - 100);
+        const left = 40 + (Object.keys(state.openWindows).length % 5) * 28;
+        const top = 36 + (Object.keys(state.openWindows).length % 4) * 28;
+        win.style.width = w + "px";
+        win.style.height = h + "px";
+        win.style.left = left + "px";
+        win.style.top = top + "px";
+      }
+
+      win.innerHTML = `
+        <div class="window-titlebar">
+          <div class="window-title">${title}</div>
+          <div class="window-controls">
+            <button class="window-btn minimize" title="Свернуть" aria-label="Свернуть">—</button>
+            <button class="window-btn maximize" title="Развернуть" aria-label="Развернуть">□</button>
+            <button class="window-btn close" title="Закрыть" aria-label="Закрыть">✕</button>
+          </div>
+        </div>
+        <div class="window-content${noPad}">${contentHTML}</div>
+      `;
+
+      const titlebar = win.querySelector(".window-titlebar");
+
+      win.querySelector(".close").addEventListener("click", (e) => {
+        e.stopPropagation();
+        win.remove();
+        delete state.openWindows[id];
+        updateTaskbar();
+      });
+
+      win.querySelector(".minimize").addEventListener("click", (e) => {
+        e.stopPropagation();
+        win.classList.add("minimized");
+        updateTaskbar();
+        notify("Свёрнуто — нажмите иконку внизу, чтобы открыть", "info", 2000);
+      });
+
+      win.querySelector(".maximize").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (win.classList.contains("maximized")) {
+          win.classList.remove("maximized");
+          if (!win.dataset.restW) {
+            win.style.width = "min(720px, 92vw)";
+            win.style.height = "min(520px, 75vh)";
+            win.style.left = "40px";
+            win.style.top = "40px";
+          } else {
+            win.style.width = win.dataset.restW;
+            win.style.height = win.dataset.restH;
+            win.style.left = win.dataset.restL;
+            win.style.top = win.dataset.restT;
+          }
+        } else {
+          win.dataset.restW = win.style.width;
+          win.dataset.restH = win.style.height;
+          win.dataset.restL = win.style.left;
+          win.dataset.restT = win.style.top;
+          win.classList.add("maximized");
+        }
+      });
+
+      // Double-click titlebar = maximize
+      titlebar.addEventListener("dblclick", (e) => {
+        if (e.target.closest(".window-btn")) return;
+        win.querySelector(".maximize").click();
+      });
+
+      // Drag (mouse + touch)
+      let dragging = false, sx, sy, sl, st;
+      const onStart = (clientX, clientY) => {
+        if (win.classList.contains("maximized")) return;
+        dragging = true;
+        sx = clientX;
+        sy = clientY;
+        sl = parseInt(win.style.left || "0", 10);
+        st = parseInt(win.style.top || "0", 10);
+        win.style.zIndex = ++state.zIndex;
+      };
+      titlebar.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".window-btn")) return;
+        onStart(e.clientX, e.clientY);
+      });
+      titlebar.addEventListener("touchstart", (e) => {
+        if (e.target.closest(".window-btn")) return;
+        const t = e.touches[0];
+        onStart(t.clientX, t.clientY);
+      }, { passive: true });
+
+      const onMove = (clientX, clientY) => {
+        if (!dragging) return;
+        win.style.left = Math.max(0, sl + clientX - sx) + "px";
+        win.style.top = Math.max(0, st + clientY - sy) + "px";
+      };
+      window.addEventListener("mousemove", (e) => onMove(e.clientX, e.clientY));
+      window.addEventListener("touchmove", (e) => {
+        if (!dragging) return;
+        onMove(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      window.addEventListener("mouseup", () => { dragging = false; });
+      window.addEventListener("touchend", () => { dragging = false; });
+
+      win.addEventListener("mousedown", () => {
+        win.style.zIndex = ++state.zIndex;
+      });
+
+      document.body.appendChild(win);
+      state.openWindows[id] = win;
+      updateTaskbar();
+      return win;
+    }
+
+    function updateTaskbar() {
+      document.querySelectorAll(".taskbar-btn").forEach(btn => btn.classList.remove("active"));
+      const mark = (id, btnId) => {
+        const w = state.openWindows[id];
+        if (w && !w.classList.contains("minimized")) {
+          document.getElementById(btnId)?.classList.add("active");
+        }
+      };
+      mark("fm", "btn-files");
+      mark("browser", "btn-browser");
+      mark("paint", "btn-paint");
+      mark("term", "btn-term");
+      mark("aask", "btn-aask");
+    }
+
+    // ============================================================
+    // FILE MANAGER
+    // ============================================================
+    function openFileManager(path = "/") {
+      companionReact("files");
+      state.currentPath = path;
+
+      const content = `
+        <div class="fm-toolbar">
+          <button class="btn secondary icon-only" id="fm-up">⬆️</button>
+          <button class="btn secondary icon-only" id="fm-home">🏠</button>
+          <button class="btn" id="fm-new-folder">📁 Папка</button>
+          <button class="btn" id="fm-upload">⬆️ Файл</button>
+          <button class="btn danger icon-only" id="fm-delete">🗑️</button>
+        </div>
+        <div class="path-bar" id="fm-path">${path}</div>
+        <div class="file-list" id="fm-list"></div>
+      `;
+
+      const win = createWindow("fm", "Файлы", content);
+      renderFileList();
+
+      win.querySelector("#fm-up").onclick = () => {
+        if (state.currentPath !== "/") {
+          state.currentPath = FS.parentPath(state.currentPath);
+          renderFileList();
+        }
+      };
+      win.querySelector("#fm-home").onclick = () => {
+        state.currentPath = "/";
+        renderFileList();
+      };
+      win.querySelector("#fm-new-folder").onclick = () => {
+        showPrompt("Новая папка", "Имя папки:", (name) => {
+          if (!name) return;
+          const full = state.currentPath === "/" ? "/" + name : state.currentPath + "/" + name;
+          if (FS.mkdir(full)) {
+            notify("Папка создана", "success");
+            renderFileList();
+            renderDesktop();
+          } else notify("Не удалось создать", "error");
+        });
+      };
+      win.querySelector("#fm-upload").onclick = () => document.getElementById("file-input").click();
+      win.querySelector("#fm-delete").onclick = () => {
+        if (state.selectedFiles.size === 0) {
+          notify("Выберите файлы", "info");
+          return;
+        }
+        if (!confirm(`Удалить ${state.selectedFiles.size}?`)) return;
+        state.selectedFiles.forEach(p => FS.delete(p));
+        state.selectedFiles.clear();
+        notify("Удалено", "success");
+        renderFileList();
+        renderDesktop();
+      };
+    }
+
+    function renderFileList() {
+      const list = document.getElementById("fm-list");
+      const pathEl = document.getElementById("fm-path");
+      if (!list) return;
+
+      pathEl.textContent = state.currentPath;
+      const items = FS.list(state.currentPath);
+      state.selectedFiles.clear();
+
+      const win = state.openWindows["fm"];
+      if (win) {
+        win.querySelector(".window-title").textContent =
+          state.currentPath === "/" ? "Файлы" : FS.basename(state.currentPath);
+      }
+
+      if (items.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1">
+            <div class="icon">📂</div>
+            <div>Папка пуста</div>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = items.map(item => {
+        const fullPath = state.currentPath === "/" ? "/" + item.name : state.currentPath + "/" + item.name;
+        const isImg = item.type === "file" && (
+          (item.mime && item.mime.startsWith("image/")) ||
+          /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(item.name || "")
+        );
+        const iconInner = isImg && item.content
+          ? `<img src="${item.content}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:11px" />`
+          : getIcon(item);
+        const cls = isImg ? "image" : getIconClass(item);
+        return `
+          <div class="file-item" data-path="${escapeHtml(fullPath)}" data-type="${item.type}">
+            <div class="icon-wrap ${cls}">${iconInner}</div>
+            <div class="name">${escapeHtml(item.name)}</div>
+            <div class="size">${item.type === "file" ? formatSize(item.size) : "папка"}</div>
+          </div>`;
+      }).join("");
+
+      list.querySelectorAll(".file-item").forEach(el => {
+        el.addEventListener("click", () => {
+          list.querySelectorAll(".file-item").forEach(x => x.classList.remove("selected"));
+          el.classList.add("selected");
+          state.selectedFiles.clear();
+          state.selectedFiles.add(el.dataset.path);
+        });
+
+        let lastTap = 0;
+        el.addEventListener("touchend", () => {
+          const now = Date.now();
+          if (now - lastTap < 300) openItem(el);
+          lastTap = now;
+        });
+        el.addEventListener("dblclick", () => openItem(el));
+
+        setupLongPress(el, (e) => {
+          const item = FS.resolve(el.dataset.path);
+          if (item) showContextMenu(e, item, FS.parentPath(el.dataset.path));
+        });
+      });
+    }
+
+    function openItem(el) {
+      const path = el.dataset.path;
+      if (el.dataset.type === "folder") {
+        state.currentPath = path;
+        renderFileList();
+      } else {
+        openFile(path);
+      }
+    }
+
+    function openFile(path) {
+      const file = FS.resolve(path);
+      if (!file || file.type !== "file") return;
+
+      const nameLower = (file.name || "").toLowerCase();
+      const mime = file.mime || "";
+      let content = "";
+
+      // Images
+      if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(nameLower)) {
+        content = `<div style="text-align:center;padding:8px">
+          <img src="${file.content}" alt="${escapeHtml(file.name)}" style="max-width:100%;max-height:75vh;border-radius:10px" />
+        </div>`;
+      }
+      // Video
+      else if (mime.startsWith("video/") || /\.(mp4|webm|ogg|mov|mkv)$/i.test(nameLower)) {
+        content = `<div style="text-align:center;padding:8px">
+          <video controls playsinline style="max-width:100%;max-height:70vh;border-radius:10px;background:#000"
+            src="${file.content}"></video>
+          <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${escapeHtml(file.name)} · ${formatSize(file.size)}</div>
+        </div>`;
+      }
+      // Audio
+      else if (mime.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(nameLower)) {
+        content = `<div class="empty-state">
+          <div style="font-size:48px;margin-bottom:12px">🎵</div>
+          <div><strong>${escapeHtml(file.name)}</strong></div>
+          <div style="margin:16px 0">
+            <audio controls style="width:100%;max-width:360px" src="${file.content}"></audio>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">${formatSize(file.size)}</div>
+        </div>`;
+      }
+      // Text / code / txt
+      else if (
+        mime.startsWith("text/") ||
+        mime === "application/json" ||
+        mime === "application/javascript" ||
+        /\.(txt|md|json|js|ts|css|html|xml|csv|log|sh|py|c|cpp|h|java|go|rs|yml|yaml|toml|ini|cfg|conf)$/i.test(nameLower) ||
+        !mime
+      ) {
+        const text = FS.readText(path);
+        if (text === null && mime && !mime.startsWith("text/")) {
+          content = `
+            <div class="empty-state">
+              <div class="icon">${getIcon(file)}</div>
+              <div><strong>${escapeHtml(file.name)}</strong></div>
+              <div style="margin-top:8px">${formatSize(file.size)} · ${mime || "файл"}</div>
+              <div style="margin-top:18px">
+                <a class="btn" download="${escapeHtml(file.name)}" href="${file.content}">⬇️ Скачать</a>
+              </div>
+            </div>`;
+        } else {
+          const body = text ?? "[пусто]";
+          content = `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px;line-height:1.5;padding:8px;user-select:text;-webkit-user-select:text">${escapeHtml(body)}</pre>`;
+        }
+      }
+      // APK — cannot run inside browser
+      else if (mime === "application/vnd.android.package-archive" || nameLower.endsWith(".apk")) {
+        content = `
+          <div class="empty-state">
+            <div style="font-size:48px;margin-bottom:12px">📦</div>
+            <div><strong>${escapeHtml(file.name)}</strong></div>
+            <div style="margin-top:8px">${formatSize(file.size)} · APK</div>
+            <p style="margin:16px 12px;font-size:13px;color:var(--text-muted);line-height:1.45;text-align:left;max-width:340px;margin-left:auto;margin-right:auto">
+              Установка и запуск APK внутри браузерного «эмулятора» невозможны.
+              Браузер не даёт запускать Android-приложения и изолировать их так,
+              чтобы они использовали систему телефона, но не выходили за пределы этой страницы.
+              <br><br>
+              Для реальной изоляции нужны Waydroid / Anbox / полноценный эмулятор Android на ПК или отдельная среда на устройстве — не HTML/JS.
+            </p>
+            <a class="btn" download="${escapeHtml(file.name)}" href="${file.content}">⬇️ Скачать APK</a>
+          </div>`;
+        Logger.warn("Попытка открыть APK: " + file.name);
+      }
+      else {
+        content = `
+          <div class="empty-state">
+            <div class="icon">${getIcon(file)}</div>
+            <div><strong>${escapeHtml(file.name)}</strong></div>
+            <div style="margin-top:8px">${formatSize(file.size)} · ${mime || "файл"}</div>
+            <div style="margin-top:18px">
+              <a class="btn" download="${escapeHtml(file.name)}" href="${file.content}">⬇️ Скачать</a>
+            </div>
+          </div>`;
+      }
+      createWindow("viewer", file.name, content);
+    }
+
+    // ============================================================
+    // TERMINAL
+    // ============================================================
+    function openTerminal() {
+      companionReact("term");
+      const content = `
+        <div class="term-wrap">
+          <div class="term-output" id="term-output"></div>
+          <div class="term-input-line">
+            <span class="term-prompt" id="term-prompt">${Shell.prompt()}</span>
+            <input class="term-input" id="term-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="команда..." />
+          </div>
+        </div>
+      `;
+
+      const win = createWindow("term", "Терминал", content, { noPad: true });
+      const output = win.querySelector("#term-output");
+      const input = win.querySelector("#term-input");
+      const promptEl = win.querySelector("#term-prompt");
+
+      // Welcome
+      appendTerm(output, "Virtual Shell v1.0 — наберите help для справки\n", "t-info");
+
+      const runLine = () => {
+        const line = input.value;
+        input.value = "";
+        appendTerm(output, `${Shell.prompt()} ${line}\n`, "t-cmd");
+
+        const result = Shell.run(line);
+        if (result.out === "__CLEAR__") {
+          output.innerHTML = "";
+        } else if (result.out) {
+          const cls = result.code === 0 ? "" : "t-err";
+          appendTerm(output, result.out + "\n", cls);
+        }
+        promptEl.textContent = Shell.prompt();
+        output.scrollTop = output.scrollHeight;
+      };
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          runLine();
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (Shell.histIdx > 0) {
+            Shell.histIdx--;
+            input.value = Shell.history[Shell.histIdx] || "";
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (Shell.histIdx < Shell.history.length - 1) {
+            Shell.histIdx++;
+            input.value = Shell.history[Shell.histIdx] || "";
+          } else {
+            Shell.histIdx = Shell.history.length;
+            input.value = "";
+          }
+        }
+      });
+
+      setTimeout(() => input.focus(), 200);
+    }
+
+    function appendTerm(el, text, cls = "") {
+      const span = document.createElement("span");
+      if (cls) span.className = cls;
+      span.textContent = text;
+      el.appendChild(span);
+    }
+
+    // ============================================================
+    // LOGS VIEWER
+    // ============================================================
+    function openLogs() {
+      const content = `
+        <div class="logs-toolbar">
+          <button class="btn secondary" id="logs-refresh">🔄</button>
+          <button class="btn secondary" id="logs-clear">🗑 Очистить</button>
+          <button class="btn secondary" id="logs-errors">Только ошибки</button>
+          <span id="logs-count" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+        </div>
+        <div class="logs-list" id="logs-list"></div>
+      `;
+
+      const win = createWindow("logs", "Логи", content);
+      let filter = null;
+
+      const render = () => {
+        const list = win.querySelector("#logs-list");
+        let entries = Logger.entries;
+        if (filter) entries = entries.filter(e => e.level === filter);
+
+        win.querySelector("#logs-count").textContent = `${entries.length} записей`;
+
+        if (!entries.length) {
+          list.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>Логов пока нет</div></div>`;
+          return;
+        }
+
+        list.innerHTML = entries.map(e => {
+          const t = new Date(e.time).toLocaleString("ru-RU", {
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+            day: "2-digit", month: "2-digit"
+          });
+          let extra = "";
+          if (e.meta && (e.meta.file || e.meta.line)) {
+            extra = `<div style="color:var(--text-muted);margin-top:4px;font-size:11px">${e.meta.file || ""}:${e.meta.line || ""}</div>`;
+          }
+          return `
+            <div class="log-entry level-${e.level}">
+              <div class="log-meta">
+                <span class="log-badge ${e.level}">${e.level}</span>
+                <span class="log-time">${t}</span>
+              </div>
+              <div class="log-msg">${escapeHtml(e.msg)}</div>
+              ${extra}
+            </div>`;
+        }).join("");
+      };
+
+      render();
+
+      win.querySelector("#logs-refresh").onclick = render;
+      win.querySelector("#logs-clear").onclick = () => {
+        if (confirm("Очистить все логи?")) {
+          Logger.clear();
+          render();
+          notify("Логи очищены", "success");
+        }
+      };
+      win.querySelector("#logs-errors").onclick = () => {
+        filter = filter === "error" ? null : "error";
+        win.querySelector("#logs-errors").textContent = filter ? "Все логи" : "Только ошибки";
+        render();
+      };
+
+      // live update
+      const listener = () => {
+        if (state.openWindows["logs"]) render();
+      };
+      Logger.onUpdate(listener);
+    }
+
+    // ============================================================
+    // PAINT — crayon-style drawing
+    // ============================================================
+    function openPaint() {
+      companionReact("paint");
+      const content = `
+        <div style="display:flex;flex-direction:column;height:100%">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#252a33;border-bottom:1px solid #1a1d24;align-items:center">
+            <button class="btn secondary" data-tool="crayon" id="pt-crayon" style="min-height:34px;padding:6px 10px">🖍️ Мелок</button>
+            <button class="btn secondary" data-tool="fill" id="pt-fill" style="min-height:34px;padding:6px 10px">🪣 Заливка</button>
+            <button class="btn secondary" data-tool="eraser" id="pt-eraser" style="min-height:34px;padding:6px 10px">🧹 Ластик</button>
+            <label style="font-size:12px;color:#9aa0aa">Размер
+              <input type="range" id="pt-size" min="2" max="28" value="8" style="width:80px;vertical-align:middle" />
+            </label>
+            <input type="color" id="pt-color" value="#c41e3a" style="width:40px;height:32px;border:none;background:none" />
+            <div id="pt-palette" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+            <button class="btn secondary" id="pt-clear" style="min-height:34px;padding:6px 10px">Очистить</button>
+            <button class="btn" id="pt-save" style="min-height:34px;padding:6px 10px">💾 В ФС</button>
+          </div>
+          <div style="flex:1;overflow:auto;background:#f5f0e1;display:flex;justify-content:center;align-items:flex-start;padding:8px">
+            <canvas id="pt-canvas" width="360" height="480" style="background:#faf6ec;box-shadow:0 2px 12px rgba(0,0,0,0.3);touch-action:none;max-width:100%;border-radius:4px"></canvas>
+          </div>
+        </div>
+      `;
+      const win = createWindow("paint", "Рисовалка (мелки)", content, { noPad: true });
+      const canvas = win.querySelector("#pt-canvas");
+      const ctx = canvas.getContext("2d");
+      // paper
+      ctx.fillStyle = "#faf6ec";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let tool = "crayon";
+      let drawing = false;
+      let last = null;
+      const colors = ["#c41e3a","#1d4ed8","#15803d","#ca8a04","#7c3aed","#0f172a","#ea580c","#0891b2"];
+      const pal = win.querySelector("#pt-palette");
+      colors.forEach(c => {
+        const b = document.createElement("button");
+        b.style.cssText = `width:26px;height:26px;border-radius:50%;border:2px solid #333;background:${c};cursor:pointer;padding:0`;
+        b.onclick = () => { win.querySelector("#pt-color").value = c; };
+        pal.appendChild(b);
+      });
+
+      const setTool = (t) => {
+        tool = t;
+        win.querySelectorAll("[data-tool]").forEach(el => {
+          el.style.outline = el.dataset.tool === t ? "2px solid #3b82f6" : "none";
+        });
+      };
+      setTool("crayon");
+      win.querySelector("#pt-crayon").onclick = () => setTool("crayon");
+      win.querySelector("#pt-fill").onclick = () => setTool("fill");
+      win.querySelector("#pt-eraser").onclick = () => setTool("eraser");
+
+      const sizeEl = win.querySelector("#pt-size");
+      const colorEl = win.querySelector("#pt-color");
+
+      const pos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / r.width;
+        const scaleY = canvas.height / r.height;
+        const src = e.touches ? e.touches[0] : e;
+        return {
+          x: (src.clientX - r.left) * scaleX,
+          y: (src.clientY - r.top) * scaleY
+        };
+      };
+
+      const crayonLine = (x0, y0, x1, y1) => {
+        const size = +sizeEl.value;
+        const col = tool === "eraser" ? "#faf6ec" : colorEl.value;
+        const dist = Math.hypot(x1 - x0, y1 - y0) || 1;
+        const steps = Math.max(1, Math.floor(dist / 2));
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const x = x0 + (x1 - x0) * t + (Math.random() - 0.5) * size * 0.35;
+          const y = y0 + (y1 - y0) * t + (Math.random() - 0.5) * size * 0.35;
+          ctx.beginPath();
+          ctx.fillStyle = col;
+          ctx.globalAlpha = tool === "eraser" ? 1 : 0.35 + Math.random() * 0.35;
+          ctx.arc(x, y, size * (0.4 + Math.random() * 0.4), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      };
+
+      const floodFill = (cx, cy, fillColor) => {
+        const w = canvas.width, h = canvas.height;
+        const img = ctx.getImageData(0, 0, w, h);
+        const data = img.data;
+        const idx = (x, y) => (y * w + x) * 4;
+        const x0 = Math.floor(cx), y0 = Math.floor(cy);
+        if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) return;
+        const start = idx(x0, y0);
+        const sr = data[start], sg = data[start+1], sb = data[start+2], sa = data[start+3];
+        const tmp = document.createElement("canvas");
+        tmp.width = tmp.height = 1;
+        const tctx = tmp.getContext("2d");
+        tctx.fillStyle = fillColor;
+        tctx.fillRect(0, 0, 1, 1);
+        const fc = tctx.getImageData(0, 0, 1, 1).data;
+        if (sr === fc[0] && sg === fc[1] && sb === fc[2] && sa === fc[3]) return;
+        const stack = [[x0, y0]];
+        const match = (i) => data[i] === sr && data[i+1] === sg && data[i+2] === sb && data[i+3] === sa;
+        while (stack.length) {
+          const [x, y] = stack.pop();
+          const i = idx(x, y);
+          if (!match(i)) continue;
+          data[i] = fc[0]; data[i+1] = fc[1]; data[i+2] = fc[2]; data[i+3] = 255;
+          if (x > 0) stack.push([x-1, y]);
+          if (x < w-1) stack.push([x+1, y]);
+          if (y > 0) stack.push([x, y-1]);
+          if (y < h-1) stack.push([x, y+1]);
+        }
+        ctx.putImageData(img, 0, 0);
+      };
+
+      const down = (e) => {
+        e.preventDefault();
+        const p = pos(e);
+        if (tool === "fill") {
+          floodFill(p.x, p.y, colorEl.value);
+          return;
+        }
+        drawing = true;
+        last = p;
+        crayonLine(p.x, p.y, p.x, p.y);
+      };
+      const move = (e) => {
+        if (!drawing) return;
+        e.preventDefault();
+        const p = pos(e);
+        crayonLine(last.x, last.y, p.x, p.y);
+        last = p;
+      };
+      const up = () => { drawing = false; };
+
+      canvas.addEventListener("mousedown", down);
+      canvas.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      canvas.addEventListener("touchstart", down, { passive: false });
+      canvas.addEventListener("touchmove", move, { passive: false });
+      canvas.addEventListener("touchend", up);
+
+      win.querySelector("#pt-clear").onclick = () => {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#faf6ec";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      };
+      win.querySelector("#pt-save").onclick = () => {
+        if (!FS.resolve("/Изображения")) FS.mkdir("/Изображения");
+        const name = "рисунок_" + Date.now() + ".png";
+        const data = canvas.toDataURL("image/png");
+        FS.writeFile("/Изображения/" + name, data, "image/png");
+        notify("Сохранено: /Изображения/" + name, "success");
+        renderDesktop();
+      };
+    }
+
+    // ============================================================
+    // BROWSER — local, minimal, anonymous-ish
+    // ============================================================
+    function openBrowser() {
+      companionReact("browser");
+      const SETUP_KEY = "vdesktop_browser_setup_v1";
+      const homeHtml = "data:text/html;charset=utf-8," + encodeURIComponent(`<!DOCTYPE html><html><head><meta charset=utf-8>
+<meta name="referrer" content="no-referrer">
+<style>
+body{font-family:system-ui,sans-serif;background:#1a1d24;color:#e8eaed;margin:0;padding:24px;line-height:1.5}
+h1{font-size:20px;margin:0 0 8px}p{color:#9aa0aa;font-size:14px}a{color:#6cb6ff}
+.box{background:#252a33;border-radius:10px;padding:14px;margin-top:16px;border:1px solid #333}
+</style></head><body>
+<h1>Локальный браузер</h1>
+<p>Умный режим: iframe → загрузка текста страницы → открыть снаружи.</p>
+<div class="box"><strong>Подсказки</strong><br>
+Введите URL или поисковый запрос.<br>
+Если сайт режет iframe, включится текстовый режим автоматически.</div>
+</body></html>`);
+
+      const content = `
+        <div style="display:flex;flex-direction:column;height:100%;background:#2d323c">
+          <div class="linux-tabs" id="br-tabs"></div>
+          <div style="display:flex;gap:6px;padding:6px 8px;background:#323844;border-bottom:1px solid #1a1d24;align-items:center;flex-wrap:wrap">
+            <button class="btn secondary" id="br-back" style="min-height:32px;padding:4px 8px">←</button>
+            <button class="btn secondary" id="br-reload" style="min-height:32px;padding:4px 8px">↻</button>
+            <button class="btn secondary" id="br-home" style="min-height:32px;padding:4px 8px">⌂</button>
+            <input id="br-url" type="text" placeholder="URL или поиск…" autocomplete="off" spellcheck="false"
+              style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;border:1px solid #1a1d24;background:#1a1d24;color:#e8eaed;font-size:14px" />
+            <button class="btn" id="br-go" style="min-height:32px;padding:6px 12px">Перейти</button>
+            <button class="btn secondary" id="br-text" style="min-height:32px;padding:6px 8px;font-size:11px" title="Текст">TXT</button>
+            <button class="btn secondary" id="br-ext" style="min-height:32px;padding:6px 8px;font-size:11px" title="Снаружи">↗</button>
+            <button class="btn secondary" id="br-burn" style="min-height:32px;padding:6px 8px;font-size:11px">🔥</button>
+          </div>
+          <div id="br-status" style="display:none;padding:6px 10px;font-size:12px;background:#3d3418;color:#fde68a;border-bottom:1px solid #1a1d24"></div>
+          <iframe id="br-frame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+            referrerpolicy="no-referrer"
+            style="flex:1;width:100%;border:none;background:#fff"></iframe>
+          <div id="br-reader" style="display:none;flex:1;overflow:auto;padding:14px;background:#111827;color:#e5e7eb;font-size:14px;line-height:1.55;-webkit-overflow-scrolling:touch"></div>
+          <div style="padding:4px 8px;font-size:10px;color:#6b7280;background:#252a33" id="br-footer">
+            Режим: iframe → текст → снаружи · история не сохраняется
+          </div>
+        </div>
+      `;
+
+      const win = createWindow("browser", "Браузер", content, { noPad: true });
+      const frame = win.querySelector("#br-frame");
+      const reader = win.querySelector("#br-reader");
+      const urlInput = win.querySelector("#br-url");
+      const tabsEl = win.querySelector("#br-tabs");
+      const statusEl = win.querySelector("#br-status");
+      const footer = win.querySelector("#br-footer");
+
+      const tabs = [{ id: 1, title: "Домашняя", url: homeHtml, mode: "iframe" }];
+      let active = 0;
+      let idSeq = 2;
+      let loadTimer = null;
+      let iframeFailed = false;
+
+      const setStatus = (msg, show = true) => {
+        statusEl.style.display = show && msg ? "block" : "none";
+        statusEl.textContent = msg || "";
+      };
+
+      const showMode = (mode) => {
+        if (mode === "reader") {
+          frame.style.display = "none";
+          reader.style.display = "block";
+          footer.textContent = "Текстовый режим (страница загружена без iframe)";
+        } else {
+          frame.style.display = "block";
+          reader.style.display = "none";
+          footer.textContent = "Режим iframe · при блокировке — авто текст";
+        }
+      };
+
+      const extractTextFromHtml = (html, baseUrl) => {
+        try {
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          doc.querySelectorAll("script,style,noscript,iframe,svg").forEach(n => n.remove());
+          const title = (doc.querySelector("title")?.textContent || "").trim();
+          // prefer article/main
+          const main = doc.querySelector("article") || doc.querySelector("main") || doc.body;
+          let text = (main?.innerText || doc.body?.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
+          if (text.length > 80000) text = text.slice(0, 80000) + "\n\n… (обрезано)";
+          // collect links
+          const links = [];
+          doc.querySelectorAll("a[href]").forEach(a => {
+            try {
+              const href = new URL(a.getAttribute("href"), baseUrl).href;
+              const t = (a.textContent || "").trim().replace(/\s+/g, " ");
+              if (t && href.startsWith("http") && links.length < 40) links.push({ t: t.slice(0, 80), href });
+            } catch (_) {}
+          });
+          return { title, text, links };
+        } catch (e) {
+          return { title: "", text: String(html).replace(/<[^>]+>/g, " ").slice(0, 20000), links: [] };
+        }
+      };
+
+      const fetchPageText = async (url) => {
+        // 1) direct fetch (rarely works cross-origin)
+        // 2) public read-only proxies as fallback
+        const proxies = [
+          (u) => u,
+          (u) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+          (u) => "https://corsproxy.io/?" + encodeURIComponent(u)
+        ];
+        let lastErr = null;
+        for (const make of proxies) {
+          try {
+            const res = await fetch(make(url), {
+              method: "GET",
+              headers: { "Accept": "text/html,application/xhtml+xml,text/plain,*/*" },
+              referrerPolicy: "no-referrer"
+            });
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const html = await res.text();
+            if (!html || html.length < 20) throw new Error("пустой ответ");
+            return extractTextFromHtml(html, url);
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error("не удалось загрузить");
+      };
+
+      const showReader = (url, data) => {
+        tabs[active].mode = "reader";
+        showMode("reader");
+        const linksHtml = (data.links || []).slice(0, 25).map(l =>
+          `<div style="margin:4px 0"><a href="#" data-nav="${escapeHtml(l.href)}" style="color:#6cb6ff">${escapeHtml(l.t)}</a></div>`
+        ).join("");
+        reader.innerHTML = `
+          <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Источник: ${escapeHtml(url)}</div>
+          <h2 style="margin:0 0 12px;font-size:18px">${escapeHtml(data.title || "Без названия")}</h2>
+          <pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;font-size:14px;margin:0 0 16px">${escapeHtml(data.text || "(нет текста)")}</pre>
+          ${linksHtml ? `<h3 style="font-size:14px;color:#9ca3af">Ссылки</h3>${linksHtml}` : ""}
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" id="br-open-ext2">Открыть снаружи</button>
+            <button class="btn secondary" id="br-retry-iframe">Снова iframe</button>
+          </div>
+        `;
+        reader.querySelectorAll("a[data-nav]").forEach(a => {
+          a.onclick = (e) => { e.preventDefault(); navigate(a.getAttribute("data-nav")); };
+        });
+        const b1 = reader.querySelector("#br-open-ext2");
+        if (b1) b1.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
+        const b2 = reader.querySelector("#br-retry-iframe");
+        if (b2) b2.onclick = () => {
+          tabs[active].mode = "iframe";
+          showMode("iframe");
+          frame.src = url;
+          watchIframe(url);
+        };
+      };
+
+      const fallbackToText = async (url) => {
+        if (!url || url.startsWith("data:") || url.startsWith("about:")) return;
+        setStatus("iframe заблокирован — загружаю текст страницы…");
+        try {
+          const data = await fetchPageText(url);
+          showReader(url, data);
+          setStatus("Показан текстовый снимок страницы (сайт запретил iframe)", true);
+          notify("Сайт в iframe не открылся — показан текст", "info");
+        } catch (e) {
+          setStatus("Не удалось загрузить текст. Можно открыть снаружи.");
+          showMode("reader");
+          reader.innerHTML = `
+            <p style="color:#fca5a5">Не удалось встроить страницу и скачать её текст.</p>
+            <p style="color:#9ca3af;font-size:13px">${escapeHtml(e.message || String(e))}</p>
+            <p style="color:#9ca3af;font-size:13px">Частая причина: сайт режет iframe и CORS.</p>
+            <button class="btn" id="br-open-ext3">Открыть снаружи</button>
+          `;
+          const b = reader.querySelector("#br-open-ext3");
+          if (b) b.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
+        }
+      };
+
+      const watchIframe = (url) => {
+        iframeFailed = false;
+        if (loadTimer) clearTimeout(loadTimer);
+        if (!url || url.startsWith("data:") || url.startsWith("about:")) {
+          setStatus("", false);
+          showMode("iframe");
+          return;
+        }
+        // After timeout, if still on error-ish or can't access — try text
+        loadTimer = setTimeout(async () => {
+          // Try to detect blank/blocked: many mobile browsers show error page inside iframe (opaque)
+          // We always offer auto text fallback after short wait if mode still iframe
+          if (tabs[active].url !== url || tabs[active].mode === "reader") return;
+          try {
+            // cross-origin will throw — that's expected for real sites
+            const doc = frame.contentDocument;
+            if (doc && doc.location && doc.body) {
+              const bodyText = (doc.body.innerText || "").slice(0, 200);
+              if (/ERR_BLOCKED|отказано|blocked|не удалось открыть|This content is blocked/i.test(bodyText)) {
+                await fallbackToText(url);
+                return;
+              }
+            }
+          } catch (_) {
+            // opaque — assume may be blocked on mobile webviews; soft fallback only if user preference
+            // Auto text after first setup preference
+            const auto = localStorage.getItem(SETUP_KEY) === "1";
+            if (auto) {
+              // Don't always steal working pages: only if iframe error event fired
+              if (iframeFailed) await fallbackToText(url);
+            }
+          }
+        }, 2200);
+
+        frame.onload = () => {
+          try {
+            const doc = frame.contentDocument;
+            const bodyText = (doc?.body?.innerText || "").slice(0, 300);
+            if (/ERR_BLOCKED|net::ERR|не удалось открыть веб|This content is blocked|blocked by response/i.test(bodyText)) {
+              iframeFailed = true;
+              fallbackToText(url);
+            } else {
+              setStatus("", false);
+              showMode("iframe");
+            }
+          } catch (_) {
+            // cross-origin success often throws — treat as OK
+            setStatus("", false);
+            showMode("iframe");
+          }
+        };
+        frame.onerror = () => {
+          iframeFailed = true;
+          fallbackToText(url);
+        };
+      };
+
+      const renderTabs = () => {
+        tabsEl.innerHTML = tabs.map((t, i) => `
+          <div class="linux-tab ${i === active ? "active" : ""}" data-i="${i}">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.title)}</span>
+            <span class="tab-x" data-close="${i}">✕</span>
+          </div>
+        `).join("") + `<button class="linux-tab-add" id="br-newtab">+</button>`;
+
+        tabsEl.querySelectorAll(".linux-tab").forEach(el => {
+          el.onclick = (e) => {
+            if (e.target.dataset.close !== undefined) {
+              const ci = +e.target.dataset.close;
+              tabs.splice(ci, 1);
+              if (!tabs.length) {
+                tabs.push({ id: idSeq++, title: "Домашняя", url: homeHtml, mode: "iframe" });
+                active = 0;
+              } else {
+                active = Math.min(active, tabs.length - 1);
+              }
+              showTab();
+              return;
+            }
+            active = +el.dataset.i;
+            showTab();
+          };
+        });
+        const nt = tabsEl.querySelector("#br-newtab");
+        if (nt) nt.onclick = () => {
+          tabs.push({ id: idSeq++, title: "Новая", url: homeHtml, mode: "iframe" });
+          active = tabs.length - 1;
+          showTab();
+        };
+      };
+
+      const showTab = () => {
+        const t = tabs[active];
+        urlInput.value = t.url.startsWith("data:") ? "" : t.url;
+        if (t.mode === "reader" && t.readerCache) {
+          showReader(t.url, t.readerCache);
+        } else {
+          showMode("iframe");
+          frame.src = t.url;
+          watchIframe(t.url);
+        }
+        renderTabs();
+      };
+
+      const navigate = (raw) => {
+        let u = (raw || "").trim();
+        if (!u) return;
+        if (!/^https?:\/\//i.test(u) && !u.startsWith("data:") && !u.startsWith("about:")) {
+          if (u.includes(" ") || !u.includes(".")) {
+            u = "https://duckduckgo.com/html/?q=" + encodeURIComponent(u);
+          } else {
+            u = "https://" + u;
+          }
+        }
+        tabs[active].url = u;
+        tabs[active].mode = "iframe";
+        tabs[active].readerCache = null;
+        try {
+          tabs[active].title = new URL(u).hostname || "Вкладка";
+        } catch {
+          tabs[active].title = "Вкладка";
+        }
+        Logger.debug("browser navigate");
+        showMode("iframe");
+        frame.src = u;
+        urlInput.value = u.startsWith("data:") ? "" : u;
+        renderTabs();
+        watchIframe(u);
+        // Aggressive auto-fallback for known blockers after short delay
+        setTimeout(() => {
+          if (tabs[active].url === u && tabs[active].mode === "iframe") {
+            // On mobile Android WebView, error pages are same-origin sometimes
+            try {
+              const bodyText = frame.contentDocument?.body?.innerText || "";
+              if (/ERR_BLOCKED|BLOCKED_BY_RESPONSE|не удалось открыть/i.test(bodyText)) {
+                fallbackToText(u);
+              }
+            } catch (_) {}
+          }
+        }, 1500);
+      };
+
+      win.querySelector("#br-go").onclick = () => navigate(urlInput.value);
+      urlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") navigate(urlInput.value);
+      });
+      win.querySelector("#br-home").onclick = () => navigate(homeHtml);
+      win.querySelector("#br-reload").onclick = () => {
+        const u = tabs[active].url;
+        if (tabs[active].mode === "reader") fallbackToText(u);
+        else { frame.src = u; watchIframe(u); }
+      };
+      win.querySelector("#br-back").onclick = () => {
+        try { frame.contentWindow.history.back(); } catch (_) { notify("Назад недоступно", "info"); }
+      };
+      win.querySelector("#br-burn").onclick = () => {
+        tabs[active] = { id: idSeq++, title: "Домашняя", url: homeHtml, mode: "iframe" };
+        frame.src = "about:blank";
+        setTimeout(showTab, 40);
+        setStatus("", false);
+        notify("Вкладка сброшена", "success");
+      };
+      win.querySelector("#br-text").onclick = () => {
+        const u = tabs[active].url;
+        if (u && !u.startsWith("data:")) fallbackToText(u);
+        else notify("Нет URL для текста", "info");
+      };
+      win.querySelector("#br-ext").onclick = () => {
+        const u = tabs[active].url;
+        if (u && !u.startsWith("data:")) window.open(u, "_blank", "noopener,noreferrer");
+        else notify("Нет внешнего URL", "info");
+      };
+
+      // First-run setup
+      const runSetup = () => {
+        if (localStorage.getItem(SETUP_KEY) === "1") return;
+        const overlay = document.createElement("div");
+        overlay.className = "modal-overlay";
+        overlay.innerHTML = `
+          <div class="modal">
+            <h3>Настройка браузера</h3>
+            <p style="color:var(--text-muted);font-size:14px;margin-bottom:12px;line-height:1.45">
+              Многие сайты блокируют iframe (ошибка ERR_BLOCKED_BY_RESPONSE).<br><br>
+              Будет так:<br>
+              1) пробуем открыть в окне<br>
+              2) если блок — скачиваем текст страницы<br>
+              3) можно открыть сайт снаружи кнопкой ↗
+            </p>
+            <div class="modal-actions">
+              <button class="btn" id="br-setup-ok" style="flex:1;justify-content:center">Включить умный режим</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector("#br-setup-ok").onclick = () => {
+          localStorage.setItem(SETUP_KEY, "1");
+          overlay.remove();
+          notify("Умный режим браузера включён", "success");
+          // auto-test fallback path with a known blocked page is optional — skip network
+        };
+      };
+
+      showTab();
+      setTimeout(runSetup, 300);
+    }
+
+    // ============================================================
+    // Чат
+    // ============================================================
+    // —— Live2D + Clippy-style companion ——
+    const Companion = {
+      model: null,
+      app: null,
+      ready: false,
+      lastComment: 0,
+      phrases: {
+        files: ["О, файлы. Не потеряй важное~", "Папочки… аккуратнее с удалением.", "Заглянем внутрь?"],
+        browser: ["Браузер! Если iframe заблокируют — будет текст.", "Серфим осторожно.", "Опять в интернет?"],
+        paint: ["Рисовалка! Мелки ждут.", "Нарисуй что-нибудь милое.", "Я рядом, если заливка убежит."],
+        term: ["Терминал. username — сменить имя.", "Команды: help, ls, cd…", "Чёрный экран — это нормально."],
+        chat: ["Это я! Пиши сюда.", "Слушаю.", "Ну, выкладывай."],
+        upload: ["Файл загружается…", "Кидай сюда, разберёмся.", "Поймала файл!"],
+        settings: ["Настройки. Обои можно сменить.", "Крутилки и кнопочки~"],
+        open: ["Окошко открылось.", "Тащи за заголовок, если мешает."],
+        close: ["Закрыли. Я всё ещё тут.", "Окно исчезло."],
+        idle: ["Если что — ткни меня.", "Скучно? Открой чат.", "Юки на связи."]
+      },
+      pick(key) {
+        const arr = this.phrases[key] || this.phrases.idle;
+        return arr[Math.floor(Math.random() * arr.length)];
+      },
+      async init() {
+        const canvas = document.getElementById("mk-canvas");
+        if (!canvas) return;
+
+        // Works without local server: model from CDN. Local path as optional fallback.
+        const MODEL_URLS = [
+          "https://cdn.jsdelivr.net/gh/Live2D/CubismWebSamples@master/Samples/Resources/Hiyori/Hiyori.model3.json",
+          "live2d/hiyori/hiyori_free_t08.model3.json"
+        ];
+
+        const showFallback = () => {
+          const spr = document.getElementById("mk-sprite");
+          if (spr) {
+            spr.style.display = "block";
+            spr.style.width = "72px";
+            spr.style.height = "72px";
+            spr.style.margin = "24px auto 0";
+            spr.style.borderRadius = "50%";
+            spr.style.border = "2px solid rgba(255,255,255,0.35)";
+            spr.src = localStorage.getItem("vdesktop_bot_avatar") || "icons/mishka.png";
+          }
+          if (canvas) canvas.style.display = "none";
+        };
+
+        if (typeof PIXI === "undefined" || !PIXI.live2d) {
+          console.warn("Live2D runtime not loaded");
+          showFallback();
+          return;
+        }
+
+        try {
+          const app = new PIXI.Application({
+            view: canvas,
+            autoStart: true,
+            backgroundAlpha: 0,
+            width: 220,
+            height: 260,
+            antialias: true
+          });
+          this.app = app;
+
+          let model = null;
+          let lastErr = null;
+          for (const url of MODEL_URLS) {
+            try {
+              model = await PIXI.live2d.Live2DModel.from(url, { autoInteract: true });
+              console.log("Live2D loaded:", url);
+              break;
+            } catch (e) {
+              lastErr = e;
+              console.warn("Live2D try failed:", url, e);
+            }
+          }
+          if (!model) throw lastErr || new Error("no model");
+
+          this.model = model;
+          const s = 0.12;
+          model.scale.set(s);
+          model.x = 110;
+          model.y = 20;
+          app.stage.addChild(model);
+          try { model.motion("Idle"); } catch (_) {}
+          setInterval(() => {
+            if (!this.model) return;
+            try { this.model.motion("Idle"); } catch (_) {}
+          }, 14000);
+          this.ready = true;
+
+          const root = document.getElementById("mishka-live");
+          if (root) root.addEventListener("click", () => {
+            this.react("chat", true);
+            openAAsk();
+          });
+        } catch (e) {
+          console.warn("Live2D load failed", e);
+          showFallback();
+          const root = document.getElementById("mishka-live");
+          if (root) root.addEventListener("click", () => openAAsk());
+        }
+      },
+
+      motion(name) {
+        if (!this.model) return;
+        try { this.model.motion(name); } catch (_) {
+          try { this.model.motion("Tap"); } catch (__) {}
+        }
+      },
+      say(text, ms) {
+        mishkaSpeak(text, ms);
+        this.motion("Tap");
+      },
+      react(key, force) {
+        const now = Date.now();
+        if (!force && now - this.lastComment < 4500) return;
+        this.lastComment = now;
+        this.say(this.pick(key));
+      },
+      watch() {
+        const wrap = (obj, key, tag) => {
+          if (!obj || typeof obj[key] !== "function") return;
+          const orig = obj[key].bind(obj);
+          obj[key] = (...args) => {
+            try { this.react(tag); } catch (_) {}
+            return orig(...args);
+          };
+        };
+        // delay wrap until functions exist — call after definitions via init end
+      }
+    };
+
+    function mishkaSpeak(text, ms) {
+      const root = document.getElementById("mishka-live");
+      const bubble = document.getElementById("mk-bubble");
+      if (!root || !bubble) return;
+      const short = String(text || "").replace(/\s+/g, " ").trim().slice(0, 110);
+      bubble.textContent = short + (String(text || "").length > 110 ? "…" : "");
+      bubble.classList.add("show");
+      root.classList.add("speaking");
+      clearTimeout(window.__mkSpeakTimer);
+      window.__mkSpeakTimer = setTimeout(() => {
+        root.classList.remove("speaking");
+        bubble.classList.remove("show");
+      }, ms || Math.min(7000, 1800 + short.length * 35));
+    }
+
+    function companionReact(tag) {
+      try { Companion.react(tag); } catch (_) {}
+    }
+
+
+    function openAAsk() {
+      companionReact("chat");
+      const userName = localStorage.getItem("vdesktop_username") || Shell.env.USER || "user";
+      const userAvatar = localStorage.getItem("vdesktop_user_avatar") || "";
+      // Avatar from files: icons/mishka.png
+      const botAvatarDefault = "icons/mishka.png";
+      const botAvatar = localStorage.getItem("vdesktop_bot_avatar") || botAvatarDefault;
+      // sync live model sprite
+      const spr = document.getElementById("mk-sprite");
+      if (spr) spr.src = botAvatar;
+
+      const content = `
+        <div style="display:flex;flex-direction:column;height:100%;gap:0">
+          <div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#252a33">
+            <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+              Вы:
+              <input id="aask-username" type="text" value="${escapeHtml(userName)}" maxlength="24"
+                style="width:100px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:var(--text);font-size:13px" />
+            </label>
+            <button class="btn secondary" id="aask-set-user" style="min-height:32px;padding:4px 10px;font-size:12px">Имя</button>
+            <label class="btn secondary" style="min-height:32px;padding:4px 10px;font-size:12px;cursor:pointer">
+              Аватар
+              <input type="file" id="aask-user-av" accept="image/*" style="display:none" />
+            </label>
+            <label class="btn secondary" style="min-height:32px;padding:4px 10px;font-size:12px;cursor:pointer">
+              Аватар Юки
+              <input type="file" id="aask-bot-av" accept="image/*" style="display:none" />
+            </label>
+          </div>
+          <div id="aask-chat" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch"></div>
+          <div style="padding:10px;border-top:1px solid var(--border);display:flex;gap:8px">
+            <input id="aask-input" type="text" placeholder="Сообщение..." autocomplete="off"
+              style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:#0f172a;color:var(--text);font-size:16px" />
+            <button class="btn" id="aask-send" style="min-width:72px;justify-content:center">➤</button>
+          </div>
+        </div>
+      `;
+
+      const win = createWindow("aask", "Чат", content, { noPad: true });
+      const chat = win.querySelector("#aask-chat");
+      const input = win.querySelector("#aask-input");
+      const sendBtn = win.querySelector("#aask-send");
+
+      let currentUser = userName;
+      let avUser = userAvatar;
+      let avBot = botAvatar;
+
+      const appendMsg = (role, text) => {
+        const isUser = role === "user";
+        const row = document.createElement("div");
+        row.className = "chat-row " + (isUser ? "user" : "bot");
+        const name = isUser ? currentUser : "Юки";
+        const src = isUser
+          ? (avUser || "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#3b82f6"/><circle cx="32" cy="26" r="12" fill="#fff"/><ellipse cx="32" cy="52" rx="18" ry="14" fill="#fff"/></svg>`))
+          : (avBot || "icons/mishka.png");
+        row.innerHTML = `
+          <img class="chat-avatar" alt="" src="${src}" />
+          <div>
+            <div class="chat-meta">${escapeHtml(name)}</div>
+            <div class="chat-bubble"></div>
+          </div>`;
+        row.querySelector(".chat-bubble").textContent = text;
+        chat.appendChild(row);
+        chat.scrollTop = chat.scrollHeight;
+      };
+
+      // Keep original welcome text
+      appendMsg("assistant",
+        "# -*- coding: utf-8 -*-\n" +
+        "import os\n" +
+        "import torch\n" +
+        "import torch.nn as nn\n" +
+        "from google.colab import drive"
+      );
+
+      const MISHKA_SYSTEM = `Ты — Юки Хосино (星野ユキ), 17 лет. Аниме-героиня: школьница-программистка из тихого прибрежного городка, сине-фиолетовые волосы до плеч, большие глаза, любимый худи и большие наушники.
+Характер: живая, чуть вспыльчивая (лёгкий цундере), но добрая и отзывчивая; иногда «э-э», «ладно уж», «не тупи»; говоришь естественно, без тяжёлого сленга и без «я бот/нейросеть». Не упоминай токены, API и модели.
+Отвечай на языке пользователя.
+
+Ты «живёшь» внутри Virtual Desktop (index.html) и знаешь его:
+• Рабочий стол, иконки «мелком», панель внизу; твоя маленькая live-модель внизу по центру.
+• Файлы — виртуальная ФС: папки, загрузка, txt/картинки/видео/аудио; APK только скачать.
+• Терминал vsh: ls cd pwd cat mkdir rm touch echo tree find head wc df du date whoami uname env history clear help; username <имя> — сменить ник.
+• Браузер: iframe, при блоке — текст страницы или открыть снаружи.
+• Рисовалка: мелок, заливка, ластик, сохранение в /Изображения/.
+• Чат с тобой: аватар можно сменить, ник пользователя настраивается.
+• Окна как в Linux: таскать, свернуть, развернуть, закрыть.
+Помогай по приложению и обычным вопросам. Не выдумывай несуществующие кнопки.`;
+
+      let cachedToken = "";
+      const history = [{ role: "system", content: MISHKA_SYSTEM }];
+
+      const loadToken = async () => {
+        const parse = (raw) => {
+          const line = String(raw || "").split("\n").map(l => l.trim()).find(l => l && !l.startsWith("#"));
+          return line || "";
+        };
+        try {
+          const res = await fetch("token.txt", { cache: "no-store" });
+          if (res.ok) {
+            cachedToken = parse(await res.text());
+            if (cachedToken) return cachedToken;
+          }
+        } catch (_) {}
+        cachedToken = parse(FS.readText("/aask_token.txt") || "");
+        return cachedToken;
+      };
+      loadToken();
+
+      win.querySelector("#aask-set-user").onclick = () => {
+        const n = win.querySelector("#aask-username").value.trim();
+        if (Shell.setUser(n)) {
+          currentUser = Shell.env.USER;
+          localStorage.setItem("vdesktop_username", currentUser);
+          notify("Имя: " + currentUser, "success");
+        }
+      };
+
+      const readAv = (file, key, apply) => {
+        if (!file) return;
+        const r = new FileReader();
+        r.onload = () => {
+          localStorage.setItem(key, r.result);
+          apply(r.result);
+          notify("Аватар обновлён", "success");
+        };
+        r.readAsDataURL(file);
+      };
+      win.querySelector("#aask-user-av").onchange = (e) => {
+        readAv(e.target.files[0], "vdesktop_user_avatar", (d) => { avUser = d; });
+      };
+      win.querySelector("#aask-bot-av").onchange = (e) => {
+        readAv(e.target.files[0], "vdesktop_bot_avatar", (d) => {
+          avBot = d;
+          const spr = document.getElementById("mk-sprite");
+          if (spr) spr.src = d;
+        });
+      };
+
+      const send = async () => {
+        const q = input.value.trim();
+        if (!q) return;
+        input.value = "";
+        appendMsg("user", q);
+        history.push({ role: "user", content: q });
+        sendBtn.disabled = true;
+
+        if (!cachedToken) await loadToken();
+        const token = cachedToken;
+
+        if (!token || !String(token).startsWith("gsk_")) {
+          appendMsg("assistant", "…");
+          sendBtn.disabled = false;
+          input.focus();
+          return;
+        }
+
+        try {
+          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: history.slice(-22),
+              temperature: 0.75,
+              max_tokens: 2048
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            appendMsg("assistant", "…");
+          } else {
+            const answer = data.choices?.[0]?.message?.content || "…";
+            history.push({ role: "assistant", content: answer });
+            appendMsg("assistant", answer);
+            mishkaSpeak(answer);
+          }
+        } catch (_) {
+          appendMsg("assistant", "…");
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      };
+
+      sendBtn.onclick = send;
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); send(); }
+      });
+      // click live model opens chat
+      const live = document.getElementById("mishka-live");
+      if (live) live.onclick = () => { /* already in chat */ };
+      setTimeout(() => input.focus(), 200);
+    }
+
+    // ============================================================
+    // SETTINGS
+    // ============================================================
+    function openSettings() {
+      companionReact("settings");
+      const content = `
+        <div class="settings-section">
+          <h3>🖼 Обои</h3>
+          <div class="wallpaper-grid">
+            ${Object.entries(wallpapers).map(([key, val]) => `
+              <div class="wallpaper-option ${state.wallpaper === key ? "active" : ""}"
+                   data-key="${key}" style="background:${val}"></div>
+            `).join("")}
+          </div>
+          <div class="color-picker-row">
+            <label>Цвет:</label>
+            <input type="color" id="custom-color" value="#0f172a" />
+            <button class="btn secondary" id="apply-color">OK</button>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn" id="upload-wallpaper" style="width:100%;justify-content:center">📷 Своё фото</button>
+            <input type="file" id="wallpaper-input" accept="image/*" />
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>⚙️ Система</h3>
+          <p style="color:var(--text-muted);margin-bottom:10px;font-size:13px">
+            ФС: <strong id="fs-size">—</strong> · Логи: <strong id="log-count">—</strong>
+          </p>
+          <button class="btn secondary" id="export-fs" style="width:100%;margin-bottom:6px;justify-content:center">💾 Экспорт ФС</button>
+          <button class="btn danger" id="reset-fs" style="width:100%;justify-content:center">🗑 Сбросить ФС</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>🔄 Фон</h3>
+          <button class="btn" id="start-bg-task" style="width:100%;justify-content:center">Запустить задачу (5 сек)</button>
+        </div>
+      `;
+
+      const win = createWindow("settings", "Настройки", content);
+
+      win.querySelector("#fs-size").textContent = formatSize(FS.getSize(FS.root));
+      win.querySelector("#log-count").textContent = Logger.entries.length;
+
+      win.querySelectorAll(".wallpaper-option").forEach(el => {
+        el.onclick = () => {
+          state.wallpaper = el.dataset.key;
+          localStorage.setItem("vdesktop_wallpaper", state.wallpaper);
+          renderDesktop();
+          win.querySelectorAll(".wallpaper-option").forEach(x => x.classList.remove("active"));
+          el.classList.add("active");
+          notify("Обои изменены", "success");
+        };
+      });
+
+      win.querySelector("#apply-color").onclick = () => {
+        const color = win.querySelector("#custom-color").value;
+        state.wallpaper = color;
+        localStorage.setItem("vdesktop_wallpaper", color);
+        renderDesktop();
+        notify("Цвет применён", "success");
+      };
+
+      win.querySelector("#upload-wallpaper").onclick = () => win.querySelector("#wallpaper-input").click();
+      win.querySelector("#wallpaper-input").onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          state.wallpaper = reader.result;
+          localStorage.setItem("vdesktop_wallpaper", reader.result);
+          renderDesktop();
+          notify("Обои загружены", "success");
+        };
+        reader.readAsDataURL(file);
+      };
+
+      win.querySelector("#export-fs").onclick = () => {
+        const data = JSON.stringify(FS.root, null, 2);
+        const blob = new Blob([data], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "virtual-fs.json";
+        a.click();
+        URL.revokeObjectURL(url);
+        Logger.info("Экспорт ФС выполнен");
+        notify("Экспорт выполнен", "success");
+      };
+
+      win.querySelector("#reset-fs").onclick = () => {
+        if (!confirm("Удалить всю файловую систему?")) return;
+        localStorage.removeItem("vdesktop_fs");
+        FS.root = { name: "/", type: "folder", children: {} };
+        FS.mkdir("/Документы");
+        FS.mkdir("/Изображения");
+        FS.mkdir("/Загрузки");
+        FS.mkdir("/bin");
+        FS.save();
+        state.currentPath = "/";
+        Shell.cwd = "/";
+        renderDesktop();
+        if (state.openWindows["fm"]) renderFileList();
+        Logger.warn("Файловая система сброшена");
+        notify("Сброшено", "success");
+      };
+
+      win.querySelector("#start-bg-task").onclick = () => runBackgroundTask();
+    }
+
+    function runBackgroundTask() {
+      state.bgTasks++;
+      updateBgStatus();
+      Logger.info("Фоновая задача запущена");
+      notify("Фоновая задача запущена", "info");
+
+      setTimeout(() => {
+        const size = FS.getSize(FS.root);
+        state.bgTasks--;
+        updateBgStatus();
+        Logger.info("Фоновая задача завершена, размер ФС: " + formatSize(size));
+        notify(`Готово. ФС: ${formatSize(size)}`, "success");
+      }, 5000);
+    }
+
+    function updateBgStatus() {
+      const el = document.getElementById("bg-status");
+      if (state.bgTasks > 0) {
+        el.classList.add("active");
+        el.innerHTML = `<span class="spinner"></span> Фоновых задач: ${state.bgTasks}`;
+      } else {
+        el.classList.remove("active");
+      }
+    }
+
+    // ============================================================
+    // UPLOAD
+    // ============================================================
+    function handleUpload(files) {
+      companionReact("upload");
+      const path = state.openWindows["fm"] ? state.currentPath : "/Загрузки";
+      if (!FS.resolve("/Загрузки")) FS.mkdir("/Загрузки");
+
+      let count = 0;
+      const total = files.length;
+
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const fullPath = path === "/" ? "/" + file.name : path + "/" + file.name;
+          FS.writeFile(fullPath, reader.result, file.type || "application/octet-stream");
+          count++;
+          if (count === total) {
+            Logger.info(`Загружено файлов: ${count}`);
+            notify(`Загружено: ${count}`, "success");
+            renderFileList();
+            renderDesktop();
+          }
+        };
+        reader.onerror = () => {
+          count++;
+          Logger.error("Ошибка чтения файла: " + file.name);
+          notify("Ошибка чтения", "error");
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ============================================================
+    // CONTEXT MENU
+    // ============================================================
+    function showContextMenu(e, item, parentPath) {
+      const menu = document.getElementById("context-menu");
+      const overlay = document.getElementById("ctx-overlay");
+      const fullPath = parentPath === "/" ? "/" + item.name : parentPath + "/" + item.name;
+
+      menu.innerHTML = `
+        <div class="ctx-handle"></div>
+        <div class="ctx-item" data-action="open">📂 Открыть</div>
+        ${item.type === "file" ? `<div class="ctx-item" data-action="download">⬇️ Скачать</div>` : ""}
+        <div class="ctx-separator"></div>
+        <div class="ctx-item" data-action="rename">✏️ Переименовать</div>
+        <div class="ctx-item" data-action="delete" style="color:#f87171">🗑️ Удалить</div>
+      `;
+
+      menu.classList.add("visible");
+      overlay.classList.add("visible");
+
+      if (!isMobile()) {
+        menu.style.left = Math.min(e.clientX || 0, window.innerWidth - 240) + "px";
+        menu.style.top = Math.min(e.clientY || 0, window.innerHeight - 220) + "px";
+        menu.style.right = menu.style.bottom = "auto";
+      } else {
+        menu.style.left = menu.style.top = menu.style.right = menu.style.bottom = "";
+      }
+
+      menu.querySelectorAll(".ctx-item").forEach(el => {
+        el.onclick = () => {
+          const action = el.dataset.action;
+          hideContextMenu();
+          if (action === "open") {
+            if (item.type === "folder") openFileManager(fullPath);
+            else openFile(fullPath);
+          } else if (action === "download" && item.type === "file") {
+            const a = document.createElement("a");
+            a.href = item.content;
+            a.download = item.name;
+            a.click();
+          } else if (action === "delete") {
+            if (confirm("Удалить «" + item.name + "»?")) {
+              FS.delete(fullPath);
+              notify("Удалено", "success");
+              renderFileList();
+              renderDesktop();
+            }
+          } else if (action === "rename") {
+            showPrompt("Переименовать", "Новое имя:", (newName) => {
+              if (!newName || newName === item.name) return;
+              const parent = FS.resolve(parentPath);
+              if (parent.children[newName]) {
+                notify("Имя занято", "error");
+                return;
+              }
+              parent.children[newName] = { ...item, name: newName };
+              delete parent.children[item.name];
+              FS.save();
+              notify("Переименовано", "success");
+              renderFileList();
+              renderDesktop();
+            }, item.name);
+          }
+        };
+      });
+    }
+
+    function showDesktopContextMenu(e) {
+      const menu = document.getElementById("context-menu");
+      const overlay = document.getElementById("ctx-overlay");
+
+      menu.innerHTML = `
+        <div class="ctx-handle"></div>
+        <div class="ctx-item" data-action="refresh">🔄 Обновить</div>
+        <div class="ctx-item" data-action="newfolder">📁 Новая папка</div>
+        <div class="ctx-item" data-action="upload">⬆️ Загрузить</div>
+        <div class="ctx-separator"></div>
+        <div class="ctx-item" data-action="term">💻 Терминал</div>
+        <div class="ctx-item" data-action="logs">📋 Логи</div>
+        <div class="ctx-item" data-action="settings">⚙️ Настройки</div>
+      `;
+
+      menu.classList.add("visible");
+      overlay.classList.add("visible");
+
+      if (!isMobile()) {
+        menu.style.left = Math.min(e.clientX || 0, window.innerWidth - 240) + "px";
+        menu.style.top = Math.min(e.clientY || 0, window.innerHeight - 220) + "px";
+      } else {
+        menu.style.left = menu.style.top = menu.style.right = menu.style.bottom = "";
+      }
+
+      menu.querySelectorAll(".ctx-item").forEach(el => {
+        el.onclick = () => {
+          hideContextMenu();
+          const a = el.dataset.action;
+          if (a === "refresh") renderDesktop();
+          else if (a === "newfolder") {
+            showPrompt("Новая папка", "Имя:", (name) => {
+              if (name && FS.mkdir("/" + name)) {
+                notify("Папка создана", "success");
+                renderDesktop();
+              }
+            });
+          }
+          else if (a === "upload") document.getElementById("file-input").click();
+          else if (a === "term") openTerminal();
+          else if (a === "logs") openLogs();
+          else if (a === "settings") openSettings();
+        };
+      });
+    }
+
+    function hideContextMenu() {
+      document.getElementById("context-menu").classList.remove("visible");
+      document.getElementById("ctx-overlay").classList.remove("visible");
+    }
+
+    // ============================================================
+    // PROMPT
+    // ============================================================
+    function showPrompt(title, label, callback, defaultValue = "") {
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay";
+      overlay.innerHTML = `
+        <div class="modal">
+          <h3>${title}</h3>
+          <p style="margin-bottom:8px;color:var(--text-muted);font-size:13px">${label}</p>
+          <input type="text" id="prompt-input" value="${escapeHtml(defaultValue)}" autocomplete="off" />
+          <div class="modal-actions">
+            <button class="btn secondary" id="prompt-cancel">Отмена</button>
+            <button class="btn" id="prompt-ok">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const input = overlay.querySelector("#prompt-input");
+      setTimeout(() => { input.focus(); input.select(); }, 80);
+
+      const close = () => overlay.remove();
+      overlay.querySelector("#prompt-cancel").onclick = close;
+      overlay.querySelector("#prompt-ok").onclick = () => {
+        callback(input.value.trim());
+        close();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { callback(input.value.trim()); close(); }
+        if (e.key === "Escape") close();
+      });
+    }
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    function init() {
+      Logger.load();
+      FS.load();
+      renderDesktop();
+
+      document.getElementById("btn-files").onclick = () => openFileManager(state.currentPath || "/");
+      document.getElementById("btn-browser").onclick = () => openBrowser();
+      document.getElementById("btn-paint").onclick = () => openPaint();
+      document.getElementById("btn-term").onclick = () => openTerminal();
+      document.getElementById("btn-aask").onclick = () => openAAsk();
+
+      document.getElementById("file-input").onchange = (e) => {
+        if (e.target.files.length) {
+          handleUpload(e.target.files);
+          e.target.value = "";
+        }
+      };
+
+      document.getElementById("ctx-overlay").onclick = hideContextMenu;
+
+      // Live2D companion
+      const mkSpr = document.getElementById("mk-sprite");
+      const savedBotAv = localStorage.getItem("vdesktop_bot_avatar");
+      if (mkSpr) mkSpr.src = savedBotAv || "icons/mishka.png";
+      setTimeout(() => Companion.init(), 400);
+      setTimeout(() => Companion.say("Привет! Я Юки. Ткни — открою чат.", 4000), 1200);
+
+      Logger.info("Virtual Desktop запущен");
+      notify("# -*- coding: utf-8 -*-\nimport os\nimport torch\nimport torch.nn as nn\nfrom google.colab import drive", "info", 5000);
+    }
+
+    init();
+  </script>
+</body>
+</html>
